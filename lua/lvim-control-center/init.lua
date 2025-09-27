@@ -7,6 +7,7 @@ function M.setup(user_config)
 	if user_config ~= nil then
 		utils.merge(config, user_config)
 	end
+	vim.notify("test")
 end
 
 return M
