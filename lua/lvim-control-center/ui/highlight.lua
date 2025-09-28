@@ -13,7 +13,6 @@ end
 
 M.apply_highlights = function()
 	for group, opts in pairs(config.highlights or {}) do
-		-- ВИНАГИ сетвай от конфига, ако няма дефинирано в темата (или ако темата е сменила групите)
 		if not get_highlight_from_theme(group) then
 			vim.api.nvim_set_hl(0, group, {
 				fg = opts.fg,
