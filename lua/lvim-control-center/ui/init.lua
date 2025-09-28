@@ -8,14 +8,15 @@ local function render_setting_line(setting, value)
 	local label = setting.label or setting.desc or setting.name
 	local t = setting.type
 	if t == "bool" or t == "boolean" then
-		return string.format("%s %s", value and "󰄳" or "󰄰", label)
+		return string.format(" %s %s", value and "󰄳" or "󰄰", label)
 	elseif t == "select" then
-		return string.format(" %s: %s", label, value)
+		return string.format("  %s: %s", label, value)
 	else
-		return string.format(" %s: %s", label, value)
+		return string.format("  %s: %s", label, value)
 	end
 end
 
+-- Returns just lines; highlights are handled in draw!
 local function get_settings_lines(group)
 	local lines = {}
 	for _, setting in ipairs(group.settings or {}) do
@@ -59,7 +60,7 @@ M.open = function(initial_tab)
 		height = height,
 		row = math.floor((vim.o.lines - height) / 2),
 		col = math.floor((vim.o.columns - width) / 2),
-		border = "rounded",
+		border = config.border or "rounded",
 		style = "minimal",
 		noautocmd = true,
 	})
@@ -69,7 +70,7 @@ M.open = function(initial_tab)
 
 	vim.api.nvim_set_option_value(
 		"winhighlight",
-		"Normal:ConfigCenterFloat,FloatBorder:ConfigCenterBorder,Title:ConfigCenterTitle",
+		"Normal:LvimControlCenterPanel,FloatBorder:LvimControlCenterBorder,Title:LvimControlCenterTitle",
 		{ win = win }
 	)
 
@@ -115,46 +116,110 @@ M.open = function(initial_tab)
 		local tab_ranges = {}
 		local col = 0
 		for i, group in ipairs(config.groups) do
-			local name = " " .. (group.icon or "") .. " " .. group.name .. " "
+			local icon = group.icon or ""
+			local has_icon = icon ~= ""
+			local name = " " .. icon .. (has_icon and " " or "") .. group.name .. " "
 			table.insert(tabs, name)
-			local start_col = col
-			local end_col = col + #name
-			table.insert(tab_ranges, { active = (i == active_tab), start_col = start_col, end_col = end_col })
-			col = end_col
+
+			local tab_start_col = col
+			local tab_end_col = col + #name
+			local icon_start_col = has_icon and (tab_start_col + 1) or -1
+			local icon_end_col = has_icon and (icon_start_col + #icon) or -1
+
+			table.insert(tab_ranges, {
+				active = (i == active_tab),
+				tab_start_col = tab_start_col,
+				tab_end_col = tab_end_col,
+				icon_start_col = icon_start_col,
+				icon_end_col = icon_end_col,
+				has_icon = has_icon,
+			})
+			col = tab_end_col
 		end
+
 		local tabs_line = table.concat(tabs, "")
 		table.insert(lines, tabs_line)
-		table.insert(lines, string.rep("─", width))
+
+		-- separator line has exactly 'width' display columns; use same char repeated
+		local sep = string.rep("─", width)
+		table.insert(lines, sep)
+
 		local group = config.groups[active_tab]
 		local content_lines = get_settings_lines(group)
+
+		-- write content_lines AS IS (no padding)
 		for _, l in ipairs(content_lines) do
 			table.insert(lines, l)
 		end
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
 		local ns_id = vim.api.nvim_create_namespace("lvim-control-center-tabs")
-		vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, 2 + #content_lines)
+		vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
 
-		local tab_line_len = #tabs_line
+		-- highlight separator line (row index 1 in buf is second line)
+		local sep_byte_len = #sep
+		vim.api.nvim_buf_set_extmark(buf, ns_id, 1, 0, {
+			end_col = sep_byte_len,
+			hl_group = "LvimControlCenterSeparator",
+		})
+
 		for _, r in ipairs(tab_ranges) do
-			local hl = r.active and "ConfigCenterTabActive" or "ConfigCenterTabInactive"
-			local start_col = r.start_col
-			local end_col = math.min(r.end_col, tab_line_len)
-			if end_col > start_col then
-				vim.api.nvim_buf_set_extmark(buf, ns_id, 0, start_col, {
-					end_col = end_col,
-					hl_group = hl,
+			local tab_hl = r.active and "LvimControlCenterTabActive" or "LvimControlCenterTabInactive"
+			local icon_hl = r.active and "LvimControlCenterTabIconActive" or "LvimControlCenterTabIconInactive"
+
+			vim.api.nvim_buf_set_extmark(buf, ns_id, 0, r.tab_start_col, {
+				end_col = r.tab_end_col,
+				hl_group = tab_hl,
+				priority = 80,
+			})
+
+			if r.has_icon then
+				vim.api.nvim_buf_set_extmark(buf, ns_id, 0, r.icon_start_col, {
+					end_col = r.icon_end_col,
+					hl_group = icon_hl,
+					priority = 90,
 				})
 			end
 		end
 
-		if #content_lines > 0 then
-			local row = 2 + active_setting_row - 1
-			local line_len = #(lines[row + 1] or "")
-			if line_len > 0 then
-				vim.api.nvim_buf_set_extmark(buf, ns_id, row, 0, {
-					end_col = line_len,
-					hl_group = "Visual",
+		-- Highlight content lines: highlight existing text, then add virt_text_win_col to fill rest to window width
+		for i, line in ipairs(content_lines) do
+			local is_active = (active_setting_row == i)
+			local icon_hl = is_active and "LvimControlCenterIconActive" or "LvimControlCenterIconInactive"
+			local line_hl = is_active and "LvimControlCenterLineActive" or "LvimControlCenterLineInactive"
+
+			-- icon area (use utf-aware small slice to get visual icon length)
+			local icon_len = vim.str_utfindex(line:sub(1, 5))
+			if icon_len > 0 then
+				vim.api.nvim_buf_set_extmark(buf, ns_id, i + 1, 0, {
+					end_col = icon_len,
+					hl_group = icon_hl,
+					priority = 100,
+				})
+			end
+
+			-- highlight the actual text that exists in the buffer (end_col uses byte length)
+			local text_byte_len = #line
+			if text_byte_len > 0 then
+				vim.api.nvim_buf_set_extmark(buf, ns_id, i + 1, 0, {
+					end_col = text_byte_len,
+					hl_group = line_hl,
+					priority = 90,
+					hl_mode = "blend",
+				})
+			end
+
+			-- fill the remaining display width with virt_text placed exactly at the visual column
+			local disp = vim.fn.strdisplaywidth(line)
+			local fill = math.max(0, width - disp)
+			if fill > 0 then
+				local fill_spaces = string.rep(" ", fill)
+				-- Use virt_text_win_col to position the virt_text at the exact screen column (avoids the 1-col gap)
+				vim.api.nvim_buf_set_extmark(buf, ns_id, i + 1, 0, {
+					virt_text = { { fill_spaces, line_hl } },
+					virt_text_win_col = disp,
+					priority = 90,
+					hl_mode = "blend",
 				})
 			end
 		end
@@ -190,6 +255,7 @@ M.open = function(initial_tab)
 				move_row(-1)
 			end,
 		})
+
 		vim.api.nvim_buf_set_keymap(buf, "n", "l", "", {
 			nowait = true,
 			noremap = true,
@@ -212,6 +278,7 @@ M.open = function(initial_tab)
 				end
 			end,
 		})
+
 		vim.api.nvim_buf_set_keymap(buf, "n", "q", "", {
 			nowait = true,
 			noremap = true,
@@ -219,6 +286,7 @@ M.open = function(initial_tab)
 				vim.api.nvim_win_close(win, true)
 			end,
 		})
+
 		vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", "", {
 			nowait = true,
 			noremap = true,

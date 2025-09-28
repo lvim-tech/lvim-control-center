@@ -3,17 +3,23 @@ local M = {}
 M = {
 	save = "~/.local/share/nvim/lvim-control-center",
 	window_size = {
-		width = 0.8, -- 60% от editor ширината
-		height = 0.8, -- 50% от editor височината
+		width = 0.8,
+		height = 0.8,
 	},
+	border = { " ", " ", " ", " ", " ", " ", " ", " " },
 	highlights = {
-		ConfigCenterTabActive = { fg = "#222436", bg = "#82aaff", bold = true },
-		ConfigCenterTabInactive = { fg = "#828bb8", bg = "#222436" },
-		ConfigCenterBorder = { fg = "#82aaff", bg = "#1a1b26" },
-		ConfigCenterFloat = { fg = "#c8d3f5", bg = "#1a1b26" },
-		ConfigCenterTitle = { fg = "#ff966c", bg = "#1a1b26", bold = true },
-		ConfigCenterCheckboxOn = { fg = "#a3be8c", bold = true },
-		ConfigCenterCheckboxOff = { fg = "#7c7c7c" },
+		LvimControlCenterPanel = { fg = "#505067", bg = "#1a1a22" },
+		LvimControlCenterSeparator = { fg = "#4a6494" }, -- Нова група за разделителя
+		LvimControlCenterTabActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
+		LvimControlCenterTabInactive = { fg = "#505067", bg = "#1a1a22" },
+		LvimControlCenterTabIconActive = { fg = "#b65252" },
+		LvimControlCenterTabIconInactive = { fg = "#a26666" },
+		LvimControlCenterBorder = { fg = "#4a6494", bg = "#1a1a22" },
+		LvimControlCenterTitle = { fg = "#b65252", bg = "#1a1a22", bold = true },
+		LvimControlCenterLineActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
+		LvimControlCenterLineInactive = { fg = "#505067", bg = "#1a1a22" },
+		LvimControlCenterIconActive = { fg = "#b65252" },
+		LvimControlCenterIconInactive = { fg = "#a26666" },
 	},
 }
 
