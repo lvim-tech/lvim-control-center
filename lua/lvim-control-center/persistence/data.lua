@@ -60,13 +60,11 @@ M.apply_saved_settings = function()
 	for _, group in ipairs(config.groups or {}) do
 		for _, setting in ipairs(group.settings or {}) do
 			local value = M.load(setting.name)
-			if value ~= nil then
-				if setting.set then
-					setting.set(value)
-					vim.opt[setting.name] = value
-				else
-					vim.opt[setting.name] = value
-				end
+			if value == nil then
+				value = setting.default
+			end
+			if value ~= nil and setting.set then
+				setting.set(value)
 			end
 		end
 	end
