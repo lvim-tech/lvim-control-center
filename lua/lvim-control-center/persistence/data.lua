@@ -63,6 +63,7 @@ M.apply_saved_settings = function()
 			if value ~= nil then
 				if setting.set then
 					setting.set(value)
+					vim.opt[setting.name] = value
 				else
 					vim.opt[setting.name] = value
 				end
