@@ -10,8 +10,8 @@ function M.setup(user_config)
 	if user_config ~= nil then
 		utils.merge(config, user_config)
 	end
-	highlight.apply_highlights()
 	db.init(config.save)
+	highlight.apply_highlights()
 	commands.init()
 end
 

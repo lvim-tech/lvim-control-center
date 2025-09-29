@@ -64,7 +64,7 @@ M.apply_saved_settings = function()
 				value = setting.default
 			end
 			if value ~= nil and setting.set then
-				setting.set(value)
+				setting.set(value, true)
 			end
 		end
 	end
