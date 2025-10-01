@@ -22,21 +22,23 @@ end
 
 local function get_settings_lines(group)
 	local lines = {}
-	for _, setting in ipairs(group.settings or {}) do
-		local value
-		if setting.get then
-			pcall(function()
-				value = setting.get()
-			end)
+	if group and group.settings then
+		for _, setting in ipairs(group.settings) do
+			local value
+			if setting.get then
+				pcall(function()
+					value = setting.get()
+				end)
+			end
+			if value == nil then
+				value = data.load(setting.name)
+			end
+			if value == nil and setting.default ~= nil then
+				value = setting.default
+			end
+			local line = render_setting_line(setting, value)
+			table.insert(lines, line)
 		end
-		if value == nil then
-			value = data.load(setting.name)
-		end
-		if value == nil and setting.default ~= nil then
-			value = setting.default
-		end
-		local line = render_setting_line(setting, value)
-		table.insert(lines, line)
 	end
 	return lines
 end
@@ -59,10 +61,36 @@ local function apply_cursor_blending(win)
 	})
 end
 
-M.open = function(initial_tab)
+M.open = function(tab_selector, id_or_row)
 	highlight.apply_highlights()
 
-	local active_tab = initial_tab or 1
+	-- Търси таб по label или name (label има приоритет)
+	local active_tab = 1
+	if tab_selector then
+		for i, group in ipairs(config.groups) do
+			if group.label == tab_selector or group.name == tab_selector then
+				active_tab = i
+				break
+			end
+		end
+	end
+
+	local group = config.groups[active_tab]
+	local active_setting_row = 1
+	if id_or_row and group and group.settings then
+		local idx = tonumber(id_or_row)
+		if idx and group.settings[idx] then
+			active_setting_row = idx
+		else
+			for i, setting in ipairs(group.settings) do
+				if setting.name == id_or_row then
+					active_setting_row = i
+					break
+				end
+			end
+		end
+	end
+
 	local group_count = #config.groups
 	if group_count == 0 then
 		vim.notify("No settings groups found!", vim.log.levels.ERROR)
@@ -101,18 +129,17 @@ M.open = function(initial_tab)
 
 	apply_cursor_blending(win)
 
-	local active_setting_row = 1
-
 	local function draw()
 		vim.bo[buf].modifiable = true
 		local lines = {}
 		local tabs = {}
 		local tab_ranges = {}
 		local col = 0
-		for i, group in ipairs(config.groups) do
-			local icon = group.icon or ""
+		for i, group_iter in ipairs(config.groups) do
+			local icon = group_iter.icon or ""
 			local has_icon = icon ~= ""
-			local name = " " .. icon .. (has_icon and " " or "") .. group.name .. " "
+			local tab_label = group_iter.label or group_iter.name
+			local name = " " .. icon .. (has_icon and " " or "") .. tab_label .. " "
 			table.insert(tabs, name)
 
 			local tab_start_col = col
@@ -137,8 +164,8 @@ M.open = function(initial_tab)
 		local sep = string.rep("─", width)
 		table.insert(lines, sep)
 
-		local group = config.groups[active_tab]
-		local content_lines = get_settings_lines(group)
+		local current_group = config.groups[active_tab]
+		local content_lines = get_settings_lines(current_group)
 
 		for _, l in ipairs(content_lines) do
 			table.insert(lines, l)
@@ -217,8 +244,8 @@ M.open = function(initial_tab)
 
 	local function set_keymaps()
 		local function move_row(delta)
-			local group = config.groups[active_tab]
-			local count = #(group.settings or {})
+			local group_move = config.groups[active_tab]
+			local count = #(group_move.settings or {})
 			if count == 0 then
 				return
 			end
@@ -276,8 +303,8 @@ M.open = function(initial_tab)
 			nowait = true,
 			noremap = true,
 			callback = function()
-				local group = config.groups[active_tab]
-				local setting = group.settings and group.settings[active_setting_row]
+				local group_cr = config.groups[active_tab]
+				local setting = group_cr.settings and group_cr.settings[active_setting_row]
 				if not setting then
 					return
 				end
@@ -376,8 +403,8 @@ M.open = function(initial_tab)
 			nowait = true,
 			noremap = true,
 			callback = function()
-				local group = config.groups[active_tab]
-				local setting = group.settings and group.settings[active_setting_row]
+				local group_bs = config.groups[active_tab]
+				local setting = group_bs.settings and group_bs.settings[active_setting_row]
 
 				if not setting or setting.type ~= "select" or not setting.options then
 					return

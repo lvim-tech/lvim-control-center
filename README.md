@@ -4,11 +4,10 @@
 
 **`lvim-control-center`** is an elegant and easy-to-configure settings management panel for Neovim, inspired by the concept of LunarVim. It provides a centralized user interface for quickly changing frequently used options, which are persisted across sessions.
 
-<!-- ![lvim-control-center-screenshot](https://user-images.githubusercontent.com/.../screenshot.png) <!-- TODO: Replace with a real screenshot --> -->
-
 ## ✨ Features
 
 - **Intuitive UI:** An easy-to-navigate panel with tabs (groups).
+- **Jump-to-anywhere:** Instantly open the panel to a specific tab or even a specific setting by name or by row number.
 - **Persistence:** Settings are automatically saved to an SQLite database and loaded on startup.
 - **Easy Configuration:** Define your own settings and groups using simple Lua tables.
 - **Extensibility:** Complete freedom to define complex `set` functions to manage any aspect of Neovim.
@@ -42,17 +41,44 @@ return {
 
 ## 🚀 Usage
 
-- **Open the panel:**
+### Open the panel
 
 ```vim
 :LvimControlCenter
 ```
 
-- **Navigation:**
-    - `j` / `k`: Move up/down between settings.
-    - `h` / `l`: Switch between tabs (groups).
-    - `<CR>` (Enter): Change the selected setting.
-    - `q`: Close the panel.
+### Jump directly to a tab or setting!
+
+- Open directly to a tab by name/label:
+    ```vim
+    :LvimControlCenter general
+    :LvimControlCenter Appearance
+    ```
+- Open directly to a setting by name (second param is setting's `name`):
+    ```vim
+    :LvimControlCenter lsp codelens
+    ```
+- Open directly to a setting by its row (as shown in the UI):
+
+    ```vim
+    :LvimControlCenter lsp 2
+    ```
+
+    > This will open the `lsp` tab and focus the second setting.
+
+- You can also open from Lua:
+    ```lua
+    require("lvim-control-center.ui").open("lsp", "codelens") -- by name
+    require("lvim-control-center.ui").open("lsp", 2) -- by row (number)
+    ```
+
+### Navigation
+
+- `j` / `k`: Move up/down between settings.
+- `h` / `l`: Switch between tabs (groups).
+- `<CR>` (Enter): Change the selected setting.
+- `<BS>`: Cycle select settings backward.
+- `q`: Close the panel.
 
 ## ⚙️ Configuration
 
@@ -67,7 +93,8 @@ This is an example of how to set up two groups: "General" and "Appearance".
 
 -- First, define your settings groups in separate files (good practice)
 local general_settings = {
-	name = "General",
+	name = "general", -- this is the internal key for jump-to
+	label = "General", -- this is what is shown as the tab
 	icon = "", -- Icons require a Nerd Font
 	settings = {
 		{
@@ -102,7 +129,8 @@ local general_settings = {
 }
 
 local appearance_settings = {
-	name = "Appearance",
+	name = "appearance",
+	label = "Appearance",
 	icon = "",
 	settings = {
 		{
@@ -199,6 +227,11 @@ vim.api.nvim_set_hl(0, "LvimControlCenterTabActive", { bg = "#4A454D", fg = "#CA
 | `LvimControlCenterLineInactive`    | Background of a non-selected row |
 | `LvimControlCenterIconActive`      | Icon on the selected row         |
 | `LvimControlCenterIconInactive`    | Icon on a non-selected row       |
+
+## 🏃 Tips
+
+- You can combine jump-to-tab and jump-to-setting in your mappings, autocommands, or even via Lua for quick profile scripts!
+- Both tab and setting selection are case-sensitive and work for both `name` and `label` (for tabs), and for setting `name` or row (number).
 
 ## 📄 License
 
