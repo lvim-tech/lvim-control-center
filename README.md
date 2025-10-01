@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**`lvim-control-center`** is an elegant and easy-to-configure settings management panel for Neovim, inspired by the concept of LunarVim. It provides a centralized user interface for quickly changing frequently used options, which are persisted across sessions.
+**`lvim-control-center`** is an elegant and easy-to-configure settings management panel for Neovim. It provides a centralized user interface for quickly changing frequently used options, which are persisted across sessions.
 
 ## ✨ Features
 
@@ -195,14 +195,21 @@ Each setting is a table with the following fields:
 | `get`     | `function()`          | (Optional) A function that returns the current value of the setting. Used for display in the UI.                                                                   |
 | `set`     | `function(val, deps)` | A function that is called when the value is changed. `val` is the new value, and `deps` is a table with dependencies (`deps.data.save`, `deps.utils.is_excluded`). |
 
-#### The set function and deps
+#### The set function
 
-The `set` function is the heart of the plugin. It receives two arguments:
+The `set` function is the heart of the plugin. It receives a single argument:
 
 1.  `val`: The new value the user has selected.
-2.  `deps`: A table containing useful dependencies injected by the plugin:
-    - `deps.data.save(name, val)`: **You must call this function** to persist the new value.
-    - `deps.utils`: Helper functions, such as `is_excluded(buf, bt, ft)`.
+
+To persist the new value, **you must call** your own function for saving, for example:
+
+```lua
+set = function(val)
+	data.save("relativenumber", val)
+end
+```
+
+If you use extra helpers (like `utils.is_excluded(...)`), you must provide them in your own configuration.
 
 ## 🎨 Customizing the Appearance
 
