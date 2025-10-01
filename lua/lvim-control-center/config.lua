@@ -7,6 +7,14 @@ M = {
 		height = 0.8,
 	},
 	border = { " ", " ", " ", " ", " ", " ", " ", " " },
+	icons = {
+		is_true = "",
+		is_false = "",
+		is_select = "󱖫",
+		is_int = "󰎠",
+		is_float = "",
+		is_string = "󰬶",
+	},
 	highlights = {
 		LvimControlCenterPanel = { fg = "#505067", bg = "#1a1a22" },
 		LvimControlCenterSeparator = { fg = "#4a6494" }, -- Нова група за разделителя

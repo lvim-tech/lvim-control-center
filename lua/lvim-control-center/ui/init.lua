@@ -8,19 +8,30 @@ local function render_setting_line(setting, value)
 	local label = setting.label or setting.desc or setting.name
 	local t = setting.type
 	if t == "bool" or t == "boolean" then
-		return string.format(" %s %s", value and "󰄳" or "󰄰", label)
+		return string.format(" %s %s", value and config.icons.is_true or config.icons.is_false, label)
 	elseif t == "select" then
-		return string.format("  %s: %s", label, value)
+		return string.format(" %s %s: %s", config.icons.is_select, label, value)
+	elseif t == "int" or t == "integer" then
+		return string.format(" %s %s: %d", config.icons.is_int, label, value or 0)
+	elseif t == "float" or t == "number" then
+		return string.format(" %s %s: %s", config.icons.is_float, label, value or 0)
 	else
-		return string.format("  %s: %s", label, value)
+		return string.format(" %s %s: %s", config.icons.is_string, label, value)
 	end
 end
 
--- Returns just lines; highlights are handled in draw!
 local function get_settings_lines(group)
 	local lines = {}
 	for _, setting in ipairs(group.settings or {}) do
-		local value = data.load(setting.name)
+		local value
+		if setting.get then
+			pcall(function()
+				value = setting.get()
+			end)
+		end
+		if value == nil then
+			value = data.load(setting.name)
+		end
 		if value == nil and setting.default ~= nil then
 			value = setting.default
 		end
@@ -30,8 +41,22 @@ local function get_settings_lines(group)
 	return lines
 end
 
-local function set_cursor_blend(blend)
-	vim.cmd("hi Cursor blend=" .. tostring(blend))
+local function apply_cursor_blending(win)
+	if not win or not vim.api.nvim_win_is_valid(win) then
+		return
+	end
+
+	local augroup_name = "LvimControlCenterCursorBlend"
+	local cursor_blend_augroup = vim.api.nvim_create_augroup(augroup_name, { clear = true })
+	vim.cmd("hi Cursor blend=100")
+	vim.api.nvim_create_autocmd({ "WinLeave", "WinEnter" }, {
+		group = cursor_blend_augroup,
+		callback = function()
+			local current_event_win = vim.api.nvim_get_current_win()
+			local blend_value = current_event_win == win and 100 or 0
+			vim.cmd("hi Cursor blend=" .. blend_value)
+		end,
+	})
 end
 
 M.open = function(initial_tab)
@@ -74,38 +99,7 @@ M.open = function(initial_tab)
 		{ win = win }
 	)
 
-	set_cursor_blend(100)
-	local cursor_group = vim.api.nvim_create_augroup("LvimControlCenterCursorBlend", { clear = true })
-
-	vim.api.nvim_create_autocmd({ "WinEnter", "WinLeave" }, {
-		group = cursor_group,
-		buffer = buf,
-		callback = function()
-			if vim.api.nvim_get_current_win() == win then
-				set_cursor_blend(100)
-			else
-				_G.LVIM_CONTROL_CENTER_WIN = nil
-				set_cursor_blend(0)
-			end
-		end,
-	})
-
-	vim.api.nvim_create_autocmd("WinClosed", {
-		buffer = buf,
-		callback = function()
-			_G.LVIM_CONTROL_CENTER_WIN = nil
-			set_cursor_blend(0)
-		end,
-	})
-
-	vim.api.nvim_create_autocmd("BufWipeout", {
-		group = cursor_group,
-		buffer = buf,
-		callback = function()
-			set_cursor_blend(0)
-		end,
-		once = true,
-	})
+	apply_cursor_blending(win)
 
 	local active_setting_row = 1
 
@@ -140,14 +134,12 @@ M.open = function(initial_tab)
 		local tabs_line = table.concat(tabs, "")
 		table.insert(lines, tabs_line)
 
-		-- separator line has exactly 'width' display columns; use same char repeated
 		local sep = string.rep("─", width)
 		table.insert(lines, sep)
 
 		local group = config.groups[active_tab]
 		local content_lines = get_settings_lines(group)
 
-		-- write content_lines AS IS (no padding)
 		for _, l in ipairs(content_lines) do
 			table.insert(lines, l)
 		end
@@ -156,7 +148,6 @@ M.open = function(initial_tab)
 		local ns_id = vim.api.nvim_create_namespace("lvim-control-center-tabs")
 		vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
 
-		-- highlight separator line (row index 1 in buf is second line)
 		local sep_byte_len = #sep
 		vim.api.nvim_buf_set_extmark(buf, ns_id, 1, 0, {
 			end_col = sep_byte_len,
@@ -182,13 +173,11 @@ M.open = function(initial_tab)
 			end
 		end
 
-		-- Highlight content lines: highlight existing text, then add virt_text_win_col to fill rest to window width
 		for i, line in ipairs(content_lines) do
 			local is_active = (active_setting_row == i)
 			local icon_hl = is_active and "LvimControlCenterIconActive" or "LvimControlCenterIconInactive"
 			local line_hl = is_active and "LvimControlCenterLineActive" or "LvimControlCenterLineInactive"
 
-			-- icon area (use utf-aware small slice to get visual icon length)
 			local icon_len = vim.str_utfindex(line:sub(1, 5))
 			if icon_len > 0 then
 				vim.api.nvim_buf_set_extmark(buf, ns_id, i + 1, 0, {
@@ -198,7 +187,6 @@ M.open = function(initial_tab)
 				})
 			end
 
-			-- highlight the actual text that exists in the buffer (end_col uses byte length)
 			local text_byte_len = #line
 			if text_byte_len > 0 then
 				vim.api.nvim_buf_set_extmark(buf, ns_id, i + 1, 0, {
@@ -209,12 +197,10 @@ M.open = function(initial_tab)
 				})
 			end
 
-			-- fill the remaining display width with virt_text placed exactly at the visual column
 			local disp = vim.fn.strdisplaywidth(line)
 			local fill = math.max(0, width - disp)
 			if fill > 0 then
 				local fill_spaces = string.rep(" ", fill)
-				-- Use virt_text_win_col to position the virt_text at the exact screen column (avoids the 1-col gap)
 				vim.api.nvim_buf_set_extmark(buf, ns_id, i + 1, 0, {
 					virt_text = { { fill_spaces, line_hl } },
 					virt_text_win_col = disp,
@@ -224,8 +210,7 @@ M.open = function(initial_tab)
 			end
 		end
 
-		local n_lines = #lines
-		local target_row = math.min(2 + active_setting_row, n_lines)
+		local target_row = 1 + active_setting_row
 		vim.api.nvim_win_set_cursor(win, { target_row, 0 })
 		vim.bo[buf].modifiable = false
 	end
@@ -343,7 +328,88 @@ M.open = function(initial_tab)
 							end
 						end
 					)
+				elseif setting.type == "int" or setting.type == "integer" then
+					local prompt = "Set " .. (setting.label or setting.name) .. ":"
+					vim.ui.input(
+						{ prompt = prompt, default = tostring(data.load(setting.name) or setting.default or "") },
+						function(input)
+							if input then
+								local num = tonumber(input)
+								if num and math.floor(num) == num then
+									if setting.set then
+										setting.set(num)
+									else
+										data.save(setting.name, num)
+									end
+									draw()
+								else
+									vim.notify("Please enter a valid integer!", vim.log.levels.ERROR)
+								end
+							end
+						end
+					)
+				elseif setting.type == "float" or setting.type == "number" then
+					local prompt = "Set " .. (setting.label or setting.name) .. ":"
+					vim.ui.input(
+						{ prompt = prompt, default = tostring(data.load(setting.name) or setting.default or "") },
+						function(input)
+							if input then
+								local num = tonumber(input)
+								if num then
+									if setting.set then
+										setting.set(num)
+									else
+										data.save(setting.name, num)
+									end
+									draw()
+								else
+									vim.notify("Please enter a valid number!", vim.log.levels.ERROR)
+								end
+							end
+						end
+					)
 				end
+			end,
+		})
+
+		vim.api.nvim_buf_set_keymap(buf, "n", "<BS>", "", {
+			nowait = true,
+			noremap = true,
+			callback = function()
+				local group = config.groups[active_tab]
+				local setting = group.settings and group.settings[active_setting_row]
+
+				if not setting or setting.type ~= "select" or not setting.options then
+					return
+				end
+
+				local value = data.load(setting.name)
+				if value == nil then
+					value = setting.default or setting.options[1]
+				end
+
+				local idx = 1
+				for i, v in ipairs(setting.options) do
+					if v == value then
+						idx = i
+						break
+					end
+				end
+
+				local prev_idx = idx - 1
+				if prev_idx < 1 then
+					prev_idx = #setting.options
+				end
+
+				local prev_val = setting.options[prev_idx]
+
+				if setting.set then
+					setting.set(prev_val)
+				else
+					data.save(setting.name, prev_val)
+				end
+
+				draw()
 			end,
 		})
 	end

@@ -1,1 +1,205 @@
 # LVIM CONTROL CENTER
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+**`lvim-control-center`** is an elegant and easy-to-configure settings management panel for Neovim, inspired by the concept of LunarVim. It provides a centralized user interface for quickly changing frequently used options, which are persisted across sessions.
+
+<!-- ![lvim-control-center-screenshot](https://user-images.githubusercontent.com/.../screenshot.png) <!-- TODO: Replace with a real screenshot --> -->
+
+## ✨ Features
+
+- **Intuitive UI:** An easy-to-navigate panel with tabs (groups).
+- **Persistence:** Settings are automatically saved to an SQLite database and loaded on startup.
+- **Easy Configuration:** Define your own settings and groups using simple Lua tables.
+- **Extensibility:** Complete freedom to define complex `set` functions to manage any aspect of Neovim.
+- **Type Support:** Supports boolean (`bool`), text (`string`), and selection (`select`) options.
+- **Customization:** Easily change the appearance, such as window size, borders, dimensions, and colors.
+
+## 📋 Requirements
+
+- Neovim >= 0.10.0
+- [kkharji/sqlite.lua](https://github.com/kkharji/sqlite.lua) - For settings persistence.
+
+## 💾 Installation
+
+It's recommended to use [lazy.nvim](https://github.com/folke/lazy.nvim).
+
+```lua
+-- lazy.nvim
+return {
+	{
+		"lvim-tech/lvim-control-center",
+		dependencies = { "kkharji/sqlite.lua" },
+		config = function()
+			-- Configuration goes here, see the section below
+			require("lvim-control-center").setup({
+				-- ...
+			})
+		end,
+	},
+}
+```
+
+## 🚀 Usage
+
+- **Open the panel:**
+
+```vim
+:LvimControlCenter
+```
+
+- **Navigation:**
+    - `j` / `k`: Move up/down between settings.
+    - `h` / `l`: Switch between tabs (groups).
+    - `<CR>` (Enter): Change the selected setting.
+    - `q`: Close the panel.
+
+## ⚙️ Configuration
+
+The configuration is passed to the `setup()` function. The most important part is defining the `groups`.
+
+### Full Configuration Example
+
+This is an example of how to set up two groups: "General" and "Appearance".
+
+```lua
+-- lua/plugins/lvim-control-center.lua
+
+-- First, define your settings groups in separate files (good practice)
+local general_settings = {
+	name = "General",
+	icon = "", -- Icons require a Nerd Font
+	settings = {
+		{
+			name = "relativenumber",
+			label = "Relative line numbers",
+			type = "bool",
+			default = true,
+			get = function()
+				return vim.wo.relativenumber
+			end,
+			set = function(val, deps)
+				vim.opt.relativenumber = val
+				-- You can add complex logic here, like excluding certain windows
+				-- deps.utils.is_excluded(...) is a helper function provided by the plugin
+				deps.data.save("relativenumber", val)
+			end,
+		},
+		{
+			name = "wrap",
+			label = "Wrap lines",
+			type = "bool",
+			default = false,
+			get = function()
+				return vim.wo.wrap
+			end,
+			set = function(val, deps)
+				vim.opt.wrap = val
+				deps.data.save("wrap", val)
+			end,
+		},
+	},
+}
+
+local appearance_settings = {
+	name = "Appearance",
+	icon = "",
+	settings = {
+		{
+			name = "colorscheme",
+			label = "Colorscheme",
+			type = "select",
+			options = { "tokyonight", "catppuccin", "gruvbox" }, -- Add your colorschemes
+			default = "tokyonight",
+			get = function()
+				return vim.g.colors_name
+			end,
+			set = function(val, deps)
+				vim.cmd.colorscheme(val)
+				deps.data.save("colorscheme", val)
+			end,
+		},
+		{
+			name = "colorcolumn",
+			label = "Color column at",
+			type = "string",
+			default = "80",
+			get = function()
+				return vim.opt.colorcolumn:get()
+			end,
+			set = function(val, deps)
+				vim.opt.colorcolumn = val
+				deps.data.save("colorcolumn", val)
+			end,
+		},
+	},
+}
+
+-- Now, call the setup function with your groups
+require("lvim-control-center").setup({
+	-- Pass the defined groups here
+	groups = {
+		general_settings,
+		appearance_settings,
+	},
+
+	-- Other customization options
+	border = { " ", " ", " ", " ", " ", " ", " ", " " },
+	window_size = {
+		width = 0.8, -- 80% of the editor width
+		height = 0.8, -- 80% of the editor height
+	},
+})
+```
+
+### Setting Definition
+
+Each setting is a table with the following fields:
+
+| Field     | Type                  | Description                                                                                                                                                        |
+| :-------- | :-------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`    | `string`              | **Required.** A unique internal identifier. Often matches the option name in `vim.opt`.                                                                            |
+| `label`   | `string`              | **Required.** The name displayed in the user interface.                                                                                                            |
+| `type`    | `string`              | **Required.** The type of setting: `bool`, `boolean`, `string`, `text`, `select`.                                                                                  |
+| `default` | `any`                 | The default value to be used if no value is found in the database.                                                                                                 |
+| `icon`    | `string`              | (Optional) An icon to display for the setting.                                                                                                                     |
+| `options` | `table`               | (For `type="select"`) A list of strings with the possible values.                                                                                                  |
+| `get`     | `function()`          | (Optional) A function that returns the current value of the setting. Used for display in the UI.                                                                   |
+| `set`     | `function(val, deps)` | A function that is called when the value is changed. `val` is the new value, and `deps` is a table with dependencies (`deps.data.save`, `deps.utils.is_excluded`). |
+
+#### The set function and deps
+
+The `set` function is the heart of the plugin. It receives two arguments:
+
+1.  `val`: The new value the user has selected.
+2.  `deps`: A table containing useful dependencies injected by the plugin:
+    - `deps.data.save(name, val)`: **You must call this function** to persist the new value.
+    - `deps.utils`: Helper functions, such as `is_excluded(buf, bt, ft)`.
+
+## 🎨 Customizing the Appearance
+
+You can change the colors by redefining any of the following highlight groups in your `colorscheme.lua` or `config.lua`:
+
+```lua
+-- Example
+vim.api.nvim_set_hl(0, "LvimControlCenterPanel", { bg = "#2D2A2E" })
+vim.api.nvim_set_hl(0, "LvimControlCenterTabActive", { bg = "#4A454D", fg = "#CAC5CA" })
+```
+
+| Group                              | Description                      |
+| :--------------------------------- | :------------------------------- |
+| `LvimControlCenterPanel`           | Background of the entire panel   |
+| `LvimControlCenterBorder`          | Color of the border              |
+| `LvimControlCenterSeparator`       | The line under the tabs          |
+| `LvimControlCenterTabActive`       | Active tab                       |
+| `LvimControlCenterTabInactive`     | Inactive tab                     |
+| `LvimControlCenterTabIconActive`   | Icon in an active tab            |
+| `LvimControlCenterTabIconInactive` | Icon in an inactive tab          |
+| `LvimControlCenterLineActive`      | Background of the selected row   |
+| `LvimControlCenterLineInactive`    | Background of a non-selected row |
+| `LvimControlCenterIconActive`      | Icon on the selected row         |
+| `LvimControlCenterIconInactive`    | Icon on a non-selected row       |
+
+## 📄 License
+
+This project is licensed under the BSD License. See the [LICENSE](LICENSE) file for more details.
