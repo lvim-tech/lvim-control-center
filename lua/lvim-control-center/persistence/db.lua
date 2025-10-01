@@ -65,7 +65,6 @@ M.remove = function(conditions)
 	return true
 end
 
---- При инициализация подаваш само пътя (директорията)!
 M.init = function(path)
 	local save_dir = path or vim.fn.stdpath("data") .. "/lvim-control-center"
 	local db_full_path = save_dir .. "/" .. DB_FILENAME

@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**`lvim-control-center`** is an elegant and easy-to-configure settings management panel for Neovim. It provides a centralized user interface for quickly changing frequently used options, which are persisted across sessions.
+**`Lvim Control Center`** is an elegant and easy-to-configure settings management panel for Neovim. It provides a centralized user interface for quickly changing frequently used options, which are persisted across sessions.
 
 ## ✨ Features
 
@@ -11,7 +11,7 @@
 - **Persistence:** Settings are automatically saved to an SQLite database and loaded on startup.
 - **Easy Configuration:** Define your own settings and groups using simple Lua tables.
 - **Extensibility:** Complete freedom to define complex `set` functions to manage any aspect of Neovim.
-- **Type Support:** Supports boolean (`bool`), text (`string`), and selection (`select`) options.
+- **Type Support:** Supports boolean (`bool`/`boolean`), integer (`int`/`integer`), float/number (`float`/`number`), text (`string`/`text`), and selection (`select`) options.
 - **Customization:** Easily change the appearance, such as window size, borders, dimensions, and colors.
 
 ## 📋 Requirements
@@ -84,7 +84,46 @@ return {
 
 The configuration is passed to the `setup()` function. The most important part is defining the `groups`.
 
-### Full Configuration Example
+### Default Configuration
+
+This is the default configuration. You can override any of these fields in your own setup:
+
+```lua
+{
+	save = "~/.local/share/nvim/lvim-control-center",
+	window_size = {
+		width = 0.8,
+		height = 0.8,
+	},
+	border = { " ", " ", " ", " ", " ", " ", " ", " " },
+	icons = {
+		is_true = "",
+		is_false = "",
+		is_select = "󱖫",
+		is_int = "󰎠",
+		is_float = "",
+		is_string = "󰬶",
+	},
+	highlights = {
+		LvimControlCenterPanel = { fg = "#505067", bg = "#1a1a22" },
+		LvimControlCenterSeparator = { fg = "#4a6494" },
+		LvimControlCenterTabActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
+		LvimControlCenterTabInactive = { fg = "#505067", bg = "#1a1a22" },
+		LvimControlCenterTabIconActive = { fg = "#b65252" },
+		LvimControlCenterTabIconInactive = { fg = "#a26666" },
+		LvimControlCenterBorder = { fg = "#4a6494", bg = "#1a1a22" },
+		LvimControlCenterTitle = { fg = "#b65252", bg = "#1a1a22", bold = true },
+		LvimControlCenterLineActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
+		LvimControlCenterLineInactive = { fg = "#505067", bg = "#1a1a22" },
+		LvimControlCenterIconActive = { fg = "#b65252" },
+		LvimControlCenterIconInactive = { fg = "#a26666" },
+	},
+}
+```
+
+---
+
+### Full Configuration Example (with groups)
 
 This is an example of how to set up two groups: "General" and "Appearance".
 
@@ -105,11 +144,9 @@ local general_settings = {
 			get = function()
 				return vim.wo.relativenumber
 			end,
-			set = function(val, deps)
+			set = function(val)
 				vim.opt.relativenumber = val
-				-- You can add complex logic here, like excluding certain windows
-				-- deps.utils.is_excluded(...) is a helper function provided by the plugin
-				deps.data.save("relativenumber", val)
+				data.save("relativenumber", val)
 			end,
 		},
 		{
@@ -120,9 +157,9 @@ local general_settings = {
 			get = function()
 				return vim.wo.wrap
 			end,
-			set = function(val, deps)
+			set = function(val)
 				vim.opt.wrap = val
-				deps.data.save("wrap", val)
+				data.save("wrap", val)
 			end,
 		},
 	},
@@ -142,9 +179,9 @@ local appearance_settings = {
 			get = function()
 				return vim.g.colors_name
 			end,
-			set = function(val, deps)
+			set = function(val)
 				vim.cmd.colorscheme(val)
-				deps.data.save("colorscheme", val)
+				data.save("colorscheme", val)
 			end,
 		},
 		{
@@ -155,9 +192,35 @@ local appearance_settings = {
 			get = function()
 				return vim.opt.colorcolumn:get()
 			end,
-			set = function(val, deps)
+			set = function(val)
 				vim.opt.colorcolumn = val
-				deps.data.save("colorcolumn", val)
+				data.save("colorcolumn", val)
+			end,
+		},
+		{
+			name = "indent",
+			label = "Indent width",
+			type = "int",
+			default = 2,
+			get = function()
+				return vim.opt.shiftwidth:get()
+			end,
+			set = function(val)
+				vim.opt.shiftwidth = val
+				data.save("indent", val)
+			end,
+		},
+		{
+			name = "opacity",
+			label = "Opacity",
+			type = "float",
+			default = 1.0,
+			get = function()
+				return vim.g.my_opacity or 1.0
+			end,
+			set = function(val)
+				vim.g.my_opacity = val
+				data.save("opacity", val)
 			end,
 		},
 	},
@@ -170,12 +233,33 @@ require("lvim-control-center").setup({
 		general_settings,
 		appearance_settings,
 	},
-
-	-- Other customization options
-	border = { " ", " ", " ", " ", " ", " ", " ", " " },
+	-- You can override default options here as well
 	window_size = {
 		width = 0.8, -- 80% of the editor width
 		height = 0.8, -- 80% of the editor height
+	},
+	border = { " ", " ", " ", " ", " ", " ", " ", " " },
+	icons = {
+		is_true = "",
+		is_false = "",
+		is_select = "󱖫",
+		is_int = "󰎠",
+		is_float = "",
+		is_string = "󰬶",
+	},
+	highlights = {
+		LvimControlCenterPanel = { fg = "#505067", bg = "#1a1a22" },
+		LvimControlCenterSeparator = { fg = "#4a6494" },
+		LvimControlCenterTabActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
+		LvimControlCenterTabInactive = { fg = "#505067", bg = "#1a1a22" },
+		LvimControlCenterTabIconActive = { fg = "#b65252" },
+		LvimControlCenterTabIconInactive = { fg = "#a26666" },
+		LvimControlCenterBorder = { fg = "#4a6494", bg = "#1a1a22" },
+		LvimControlCenterTitle = { fg = "#b65252", bg = "#1a1a22", bold = true },
+		LvimControlCenterLineActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
+		LvimControlCenterLineInactive = { fg = "#505067", bg = "#1a1a22" },
+		LvimControlCenterIconActive = { fg = "#b65252" },
+		LvimControlCenterIconInactive = { fg = "#a26666" },
 	},
 })
 ```
@@ -184,16 +268,16 @@ require("lvim-control-center").setup({
 
 Each setting is a table with the following fields:
 
-| Field     | Type                  | Description                                                                                                                                                        |
-| :-------- | :-------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`    | `string`              | **Required.** A unique internal identifier. Often matches the option name in `vim.opt`.                                                                            |
-| `label`   | `string`              | **Required.** The name displayed in the user interface.                                                                                                            |
-| `type`    | `string`              | **Required.** The type of setting: `bool`, `boolean`, `string`, `text`, `select`.                                                                                  |
-| `default` | `any`                 | The default value to be used if no value is found in the database.                                                                                                 |
-| `icon`    | `string`              | (Optional) An icon to display for the setting.                                                                                                                     |
-| `options` | `table`               | (For `type="select"`) A list of strings with the possible values.                                                                                                  |
-| `get`     | `function()`          | (Optional) A function that returns the current value of the setting. Used for display in the UI.                                                                   |
-| `set`     | `function(val, deps)` | A function that is called when the value is changed. `val` is the new value, and `deps` is a table with dependencies (`deps.data.save`, `deps.utils.is_excluded`). |
+| Field     | Type                     | Description                                                                                                                                             |
+| :-------- | :----------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`    | `string`                 | **Required.** A unique internal identifier. Often matches the option name in `vim.opt`.                                                                 |
+| `label`   | `string`                 | **Required.** The name displayed in the user interface.                                                                                                 |
+| `type`    | `string`                 | **Required.** The type of setting: `bool`, `boolean`, `string`, `text`, `select`, `int`, `integer`, `float`, `number`.                                  |
+| `default` | `any`                    | The default value to be used if no value is found in the database.                                                                                      |
+| `icon`    | `string`                 | (Optional) An icon to display for the setting.                                                                                                          |
+| `options` | `table`                  | (For `type="select"`) A list of strings with the possible values.                                                                                       |
+| `get`     | `function()`             | (Optional) A function that returns the current value of the setting. Used for display in the UI.                                                        |
+| `set`     | `function(val, on_init)` | A function that is called when the value is changed. `val` is the new value. **You must call `data.save(setting.name, val)` to persist the new value.** |
 
 #### The set function
 

@@ -59,12 +59,14 @@ end
 M.apply_saved_settings = function()
 	for _, group in ipairs(config.groups or {}) do
 		for _, setting in ipairs(group.settings or {}) do
-			local value = M.load(setting.name)
-			if value == nil then
-				value = setting.default
-			end
-			if value ~= nil and setting.set then
-				setting.set(value, true)
+			if not setting.break_load then
+				local value = M.load(setting.name)
+				if value == nil then
+					value = setting.default
+				end
+				if value ~= nil and setting.set then
+					setting.set(value, true)
+				end
 			end
 		end
 	end
