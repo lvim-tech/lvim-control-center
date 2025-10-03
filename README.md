@@ -1,6 +1,6 @@
 # LVIM CONTROL CENTER
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)(https://opensource.org/licenses/MIT)
 
 **`Lvim Control Center`** is an elegant and easy-to-configure settings management panel for Neovim. It provides a centralized user interface for quickly changing frequently used options, which are persisted across sessions.
 
@@ -51,8 +51,8 @@ return {
 
 - Open directly to a tab by name/label:
     ```vim
-    :LvimControlCenter general
-    :LvimControlCenter Appearance
+    :LvimControlCenter general -- name
+    :LvimControlCenter General -- label
     ```
 - Open directly to a setting by name (second param is setting's `name`):
     ```vim
@@ -64,13 +64,12 @@ return {
     :LvimControlCenter lsp 2
     ```
 
-    > This will open the `lsp` tab and focus the second setting.
-
 - You can also open from Lua:
-    ```lua
+    ````lua
     require("lvim-control-center.ui").open("lsp", "codelens") -- by name
     require("lvim-control-center.ui").open("lsp", 2) -- by row (number)
-    ```
+      ```
+    ````
 
 ### Navigation
 
@@ -138,28 +137,46 @@ local general_settings = {
 	settings = {
 		{
 			name = "relativenumber",
-			label = "Relative line numbers",
-			type = "bool",
-			default = true,
-			get = function()
-				return vim.wo.relativenumber
-			end,
-			set = function(val)
-				vim.opt.relativenumber = val
-				data.save("relativenumber", val)
-			end,
-		},
-		{
-			name = "wrap",
-			label = "Wrap lines",
+			label = "Show relative line numbers",
 			type = "bool",
 			default = false,
 			get = function()
-				return vim.wo.wrap
+				return vim.opt.relativenumber.get()
 			end,
-			set = function(val)
-				vim.opt.wrap = val
-				data.save("wrap", val)
+			set = function(val, on_init)
+				if on_init then
+					vim.opt.relativenumber = val
+				else
+					for _, win in ipairs(vim.api.nvim_list_wins()) do
+						local buf = vim.api.nvim_win_get_buf(win)
+						if not utils.is_excluded(buf, {}, { "neo-tree" }) then
+							vim.wo[win].relativenumber = val
+						end
+					end
+					data.save("relativenumber", val)
+				end
+			end,
+		},
+		{
+			name = "cursorline",
+			label = "Show cursor line",
+			type = "bool",
+			default = true,
+			get = function()
+				return vim.opt.cursorline.get()
+			end,
+			set = function(val, on_init)
+				if on_init then
+					vim.opt.cursorline = val
+				else
+					for _, win in ipairs(vim.api.nvim_list_wins()) do
+						local buf = vim.api.nvim_win_get_buf(win)
+						if not utils.is_excluded(buf, {}, { "neo-tree" }) then
+							vim.wo[win].cursorline = val
+						end
+					end
+					data.save("cursorline", val)
+				end
 			end,
 		},
 	},
@@ -174,53 +191,27 @@ local appearance_settings = {
 			name = "colorscheme",
 			label = "Colorscheme",
 			type = "select",
-			options = { "tokyonight", "catppuccin", "gruvbox" }, -- Add your colorschemes
-			default = "tokyonight",
+			options = { "lvim-dark", "lvim-darker", "lvim-everforest", "lvim-gruvbox", "lvim-kanagawa", "lvim-light" },
+			default = "lvim-darker",
+			break_load = true,
 			get = function()
-				return vim.g.colors_name
+				if _G.LVIM_THEME ~= nil then
+					return _G.LVIM_THEME
+				else
+					return "lvim-darker"
+				end
 			end,
-			set = function(val)
-				vim.cmd.colorscheme(val)
+			set = function(val, _)
+				_G.LVIM_THEME = val
+				vim.cmd("colorscheme " .. val)
+				funcs.write_file(_G.global.lvim_path .. "/.configs/lvim/.theme", _G.LVIM_THEME)
+				---@diagnostic disable-next-line: undefined-field
+				if _G.LVIM_CONTROL_CENTER_WIN and is_control_center_focused(_G.LVIM_CONTROL_CENTER_WIN) then
+					vim.cmd("hi Cursor blend=100")
+				else
+					vim.cmd("hi Cursor blend=0")
+				end
 				data.save("colorscheme", val)
-			end,
-		},
-		{
-			name = "colorcolumn",
-			label = "Color column at",
-			type = "string",
-			default = "80",
-			get = function()
-				return vim.opt.colorcolumn:get()
-			end,
-			set = function(val)
-				vim.opt.colorcolumn = val
-				data.save("colorcolumn", val)
-			end,
-		},
-		{
-			name = "indent",
-			label = "Indent width",
-			type = "int",
-			default = 2,
-			get = function()
-				return vim.opt.shiftwidth:get()
-			end,
-			set = function(val)
-				vim.opt.shiftwidth = val
-				data.save("indent", val)
-			end,
-		},
-		{
-			name = "opacity",
-			label = "Opacity",
-			type = "float",
-			default = 1.0,
-			get = function()
-				return vim.g.my_opacity or 1.0
-			end,
-			set = function(val)
-				vim.g.my_opacity = val
-				data.save("opacity", val)
 			end,
 		},
 	},
