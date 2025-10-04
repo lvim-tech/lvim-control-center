@@ -15,6 +15,8 @@ local function render_setting_line(setting, value)
 		return string.format(" %s %s: %d", config.icons.is_int, label, value or 0)
 	elseif t == "float" or t == "number" then
 		return string.format(" %s %s: %s", config.icons.is_float, label, value or 0)
+	elseif t == "action" then
+		return string.format(" %s %s", config.icons.is_action or "", label)
 	else
 		return string.format(" %s %s: %s", config.icons.is_string, label, value)
 	end
@@ -25,15 +27,17 @@ local function get_settings_lines(group)
 	if group and group.settings then
 		for _, setting in ipairs(group.settings) do
 			local value
-			if setting.get then
+			if setting.type == "action" then
+				value = nil
+			elseif setting.get then
 				pcall(function()
 					value = setting.get()
 				end)
 			end
-			if value == nil then
+			if value == nil and setting.type ~= "action" then
 				value = data.load(setting.name)
 			end
-			if value == nil and setting.default ~= nil then
+			if value == nil and setting.default ~= nil and setting.type ~= "action" then
 				value = setting.default
 			end
 			local line = render_setting_line(setting, value)
@@ -395,6 +399,13 @@ M.open = function(tab_selector, id_or_row)
 							end
 						end
 					)
+				elseif setting.type == "action" then
+					if setting.run and type(setting.run) == "function" then
+						setting.run()
+					else
+						vim.notify("No action defined for: " .. (setting.label or setting.name), vim.log.levels.WARN)
+					end
+					draw()
 				end
 			end,
 		})
