@@ -14,6 +14,7 @@ M = {
 		is_int = "󰎠",
 		is_float = "",
 		is_string = "󰬶",
+		is_action = "",
 	},
 	highlights = {
 		LvimControlCenterPanel = { fg = "#505067", bg = "#1a1a22" },

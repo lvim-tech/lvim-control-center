@@ -68,6 +68,9 @@ end
 M.open = function(tab_selector, id_or_row)
 	highlight.apply_highlights()
 
+	-- Запази буфера, от който е стартиран плъгина
+	local origin_bufnr = vim.api.nvim_get_current_buf()
+
 	-- Търси таб по label или name (label има приоритет)
 	local active_tab = 1
 	if tab_selector then
@@ -320,7 +323,7 @@ M.open = function(tab_selector, id_or_row)
 					end
 					value = not value
 					if setting.set then
-						setting.set(value)
+						setting.set(value, nil, origin_bufnr)
 					else
 						data.save(setting.name, value)
 					end
@@ -339,7 +342,7 @@ M.open = function(tab_selector, id_or_row)
 					end
 					local next_val = setting.options[(idx % #setting.options) + 1]
 					if setting.set then
-						setting.set(next_val)
+						setting.set(next_val, nil, origin_bufnr)
 					else
 						data.save(setting.name, next_val)
 					end
@@ -351,7 +354,7 @@ M.open = function(tab_selector, id_or_row)
 						function(input)
 							if input then
 								if setting.set then
-									setting.set(input)
+									setting.set(input, nil, origin_bufnr)
 								else
 									data.save(setting.name, input)
 								end
@@ -368,7 +371,7 @@ M.open = function(tab_selector, id_or_row)
 								local num = tonumber(input)
 								if num and math.floor(num) == num then
 									if setting.set then
-										setting.set(num)
+										setting.set(num, nil, origin_bufnr)
 									else
 										data.save(setting.name, num)
 									end
@@ -388,7 +391,7 @@ M.open = function(tab_selector, id_or_row)
 								local num = tonumber(input)
 								if num then
 									if setting.set then
-										setting.set(num)
+										setting.set(num, nil, origin_bufnr)
 									else
 										data.save(setting.name, num)
 									end
@@ -401,7 +404,7 @@ M.open = function(tab_selector, id_or_row)
 					)
 				elseif setting.type == "action" then
 					if setting.run and type(setting.run) == "function" then
-						setting.run()
+						setting.run(origin_bufnr)
 					else
 						vim.notify("No action defined for: " .. (setting.label or setting.name), vim.log.levels.WARN)
 					end
@@ -442,7 +445,7 @@ M.open = function(tab_selector, id_or_row)
 				local prev_val = setting.options[prev_idx]
 
 				if setting.set then
-					setting.set(prev_val)
+					setting.set(prev_val, nil, origin_bufnr)
 				else
 					data.save(setting.name, prev_val)
 				end
