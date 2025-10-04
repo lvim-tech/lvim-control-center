@@ -120,7 +120,8 @@ M.open = function(tab_selector, id_or_row)
 		height = height,
 		row = math.floor((vim.o.lines - height) / 2),
 		col = math.floor((vim.o.columns - width) / 2),
-		border = config.border or "rounded",
+		zindex = 10,
+		border = config.border or "single",
 		style = "minimal",
 		noautocmd = true,
 	})
