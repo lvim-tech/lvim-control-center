@@ -77,7 +77,7 @@ return {
 - `h` / `l`: Switch between tabs (groups).
 - `<CR>` (Enter): Change the selected setting.
 - `<BS>`: Cycle select settings backward.
-- `q`: Close the panel.
+- `<Esc>`, `q`: Close the panel.
 
 ## ⚙️ Configuration
 

@@ -68,10 +68,8 @@ end
 M.open = function(tab_selector, id_or_row)
 	highlight.apply_highlights()
 
-	-- Запази буфера, от който е стартиран плъгина
 	local origin_bufnr = vim.api.nvim_get_current_buf()
 
-	-- Търси таб по label или name (label има приоритет)
 	local active_tab = 1
 	if tab_selector then
 		for i, group in ipairs(config.groups) do
@@ -296,6 +294,14 @@ M.open = function(tab_selector, id_or_row)
 					active_setting_row = 1
 					draw()
 				end
+			end,
+		})
+
+		vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", "", {
+			nowait = true,
+			noremap = true,
+			callback = function()
+				vim.api.nvim_win_close(win, true)
 			end,
 		})
 

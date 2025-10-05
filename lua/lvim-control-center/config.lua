@@ -18,7 +18,7 @@ M = {
 	},
 	highlights = {
 		LvimControlCenterPanel = { fg = "#505067", bg = "#1a1a22" },
-		LvimControlCenterSeparator = { fg = "#4a6494" }, -- Нова група за разделителя
+		LvimControlCenterSeparator = { fg = "#4a6494" },
 		LvimControlCenterTabActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
 		LvimControlCenterTabInactive = { fg = "#505067", bg = "#1a1a22" },
 		LvimControlCenterTabIconActive = { fg = "#b65252" },
