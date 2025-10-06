@@ -23,6 +23,7 @@ M = {
 		LvimControlCenterTabInactive = { fg = "#505067", bg = "#1a1a22" },
 		LvimControlCenterTabIconActive = { fg = "#b65252" },
 		LvimControlCenterTabIconInactive = { fg = "#a26666" },
+		LvimControlCenterStatusLine = { fg = "#4a6494" },
 		LvimControlCenterBorder = { fg = "#4a6494", bg = "#1a1a22" },
 		LvimControlCenterTitle = { fg = "#b65252", bg = "#1a1a22", bold = true },
 		LvimControlCenterLineActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },

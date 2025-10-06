@@ -16,7 +16,7 @@ local function render_setting_line(setting, value)
 	elseif t == "float" or t == "number" then
 		return string.format(" %s %s: %s", config.icons.is_float, label, value or 0)
 	elseif t == "action" then
-		return string.format(" %s %s", config.icons.is_action or "", label)
+		return string.format(" %s %s", config.icons.is_action or "", label)
 	else
 		return string.format(" %s %s: %s", config.icons.is_string, label, value)
 	end
@@ -45,6 +45,33 @@ local function get_settings_lines(group)
 		end
 	end
 	return lines
+end
+
+local function get_keybindings_line(setting_type)
+	local base_bindings = "j/k: Navigate  h/l: Change Tab  Esc/q: Close"
+	local action_bindings = "  Enter: Execute"
+	local edit_bindings = "  Enter: Edit"
+	local toggle_bindings = "  Enter: Toggle"
+	local select_bindings = "  Enter: Next Value  BS: Prev Value"
+
+	if setting_type == "bool" or setting_type == "boolean" then
+		return base_bindings .. toggle_bindings
+	elseif setting_type == "select" then
+		return base_bindings .. select_bindings
+	elseif
+		setting_type == "int"
+		or setting_type == "integer"
+		or setting_type == "float"
+		or setting_type == "number"
+		or setting_type == "text"
+		or setting_type == "string"
+	then
+		return base_bindings .. edit_bindings
+	elseif setting_type == "action" then
+		return base_bindings .. action_bindings
+	else
+		return base_bindings .. edit_bindings
+	end
 end
 
 local function apply_cursor_blending(win)
@@ -135,12 +162,20 @@ M.open = function(tab_selector, id_or_row)
 
 	apply_cursor_blending(win)
 
+	vim.wo[win].scrolloff = 0
+	local header_height = 2
+	local footer_height = 1
+	local content_start_line = header_height
+	local content_end_line = height - footer_height - 1
+	local content_height = content_end_line - content_start_line + 1
+
 	local function draw()
 		vim.bo[buf].modifiable = true
 		local lines = {}
 		local tabs = {}
 		local tab_ranges = {}
 		local col = 0
+
 		for i, group_iter in ipairs(config.groups) do
 			local icon = group_iter.icon or ""
 			local has_icon = icon ~= ""
@@ -176,6 +211,19 @@ M.open = function(tab_selector, id_or_row)
 		for _, l in ipairs(content_lines) do
 			table.insert(lines, l)
 		end
+
+		local padding_lines_needed = math.max(0, content_height - #content_lines)
+		for _ = 1, padding_lines_needed do
+			table.insert(lines, "")
+		end
+
+		local setting_type = "string"
+		if current_group and current_group.settings and current_group.settings[active_setting_row] then
+			setting_type = current_group.settings[active_setting_row].type or "string"
+		end
+
+		table.insert(lines, get_keybindings_line(setting_type))
+
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
 		local ns_id = vim.api.nvim_create_namespace("lvim-control-center-tabs")
@@ -207,44 +255,59 @@ M.open = function(tab_selector, id_or_row)
 		end
 
 		for i, line in ipairs(content_lines) do
-			local is_active = (active_setting_row == i)
-			local icon_hl = is_active and "LvimControlCenterIconActive" or "LvimControlCenterIconInactive"
-			local line_hl = is_active and "LvimControlCenterLineActive" or "LvimControlCenterLineInactive"
+			if i <= content_height then
+				local line_index = i + header_height - 1
+				local is_active = (active_setting_row == i)
+				local icon_hl = is_active and "LvimControlCenterIconActive" or "LvimControlCenterIconInactive"
+				local line_hl = is_active and "LvimControlCenterLineActive" or "LvimControlCenterLineInactive"
 
-			local icon_len = vim.str_utfindex(line:sub(1, 5))
-			if icon_len > 0 then
-				vim.api.nvim_buf_set_extmark(buf, ns_id, i + 1, 0, {
-					end_col = icon_len,
-					hl_group = icon_hl,
-					priority = 100,
-				})
-			end
+				local icon_len = 2
+				if icon_len > 0 then
+					vim.api.nvim_buf_set_extmark(buf, ns_id, line_index, 0, {
+						end_col = icon_len,
+						hl_group = icon_hl,
+						priority = 100,
+					})
+				end
 
-			local text_byte_len = #line
-			if text_byte_len > 0 then
-				vim.api.nvim_buf_set_extmark(buf, ns_id, i + 1, 0, {
-					end_col = text_byte_len,
-					hl_group = line_hl,
-					priority = 90,
-					hl_mode = "blend",
-				})
-			end
+				local text_byte_len = #line
+				if text_byte_len > 0 then
+					vim.api.nvim_buf_set_extmark(buf, ns_id, line_index, 0, {
+						end_col = text_byte_len,
+						hl_group = line_hl,
+						priority = 90,
+						hl_mode = "blend",
+					})
+				end
 
-			local disp = vim.fn.strdisplaywidth(line)
-			local fill = math.max(0, width - disp)
-			if fill > 0 then
-				local fill_spaces = string.rep(" ", fill)
-				vim.api.nvim_buf_set_extmark(buf, ns_id, i + 1, 0, {
-					virt_text = { { fill_spaces, line_hl } },
-					virt_text_win_col = disp,
-					priority = 90,
-					hl_mode = "blend",
-				})
+				local disp = vim.fn.strdisplaywidth(line)
+				local fill = math.max(0, width - disp)
+				if fill > 0 then
+					local fill_spaces = string.rep(" ", fill)
+					vim.api.nvim_buf_set_extmark(buf, ns_id, line_index, text_byte_len, {
+						virt_text = { { fill_spaces, line_hl } },
+						virt_text_win_col = disp,
+						priority = 90,
+						hl_mode = "blend",
+					})
+				end
 			end
 		end
 
-		local target_row = 1 + active_setting_row
+		local footer_line_index = #lines - 1
+		vim.api.nvim_buf_set_extmark(buf, ns_id, footer_line_index, 0, {
+			end_col = #lines[#lines],
+			hl_group = "LvimControlCenterStatusLine",
+			priority = 100,
+		})
+
+		local target_row = content_start_line + active_setting_row - 1
 		vim.api.nvim_win_set_cursor(win, { target_row, 0 })
+
+		vim.api.nvim_set_option_value("scrolloff", header_height, { win = win })
+		vim.api.nvim_set_option_value("sidescrolloff", 0, { win = win })
+		vim.api.nvim_set_option_value("scrolloff", header_height, { win = win })
+
 		vim.bo[buf].modifiable = false
 	end
 
