@@ -7,44 +7,92 @@ local M = {}
 local function render_setting_line(setting, value)
 	local label = setting.label or setting.desc or setting.name
 	local t = setting.type
+
+	local icon = setting.icon
+	if not icon then
+		if t == "bool" or t == "boolean" then
+			icon = value and config.icons.is_true or config.icons.is_false
+		elseif t == "select" then
+			icon = config.icons.is_select
+		elseif t == "int" or t == "integer" then
+			icon = config.icons.is_int
+		elseif t == "float" or t == "number" then
+			icon = config.icons.is_float
+		elseif t == "action" then
+			icon = config.icons.is_action or ""
+		elseif t == "spacer" then
+			icon = config.icons.is_spacer or ""
+		else
+			icon = config.icons.is_string
+		end
+	end
+
 	if t == "bool" or t == "boolean" then
-		return string.format(" %s %s", value and config.icons.is_true or config.icons.is_false, label)
+		return string.format(" %s %s", icon, label)
 	elseif t == "select" then
-		return string.format(" %s %s: %s", config.icons.is_select, label, value)
+		return string.format(" %s %s: %s", icon, label, value)
 	elseif t == "int" or t == "integer" then
-		return string.format(" %s %s: %d", config.icons.is_int, label, value or 0)
+		return string.format(" %s %s: %d", icon, label, value or 0)
 	elseif t == "float" or t == "number" then
-		return string.format(" %s %s: %s", config.icons.is_float, label, value or 0)
+		return string.format(" %s %s: %s", icon, label, value or 0)
 	elseif t == "action" then
-		return string.format(" %s %s", config.icons.is_action or "", label)
+		return string.format(" %s %s", icon, label)
+	elseif t == "spacer" then
+		local spacer_text = setting.label or setting.desc or ""
+		return string.format(" %s %s", icon, spacer_text)
+	elseif t == "spacer_line" then
+		return ""
 	else
-		return string.format(" %s %s: %s", config.icons.is_string, label, value)
+		return string.format(" %s %s: %s", icon, label, value)
 	end
 end
 
 local function get_settings_lines(group)
 	local lines = {}
+	local meta = {}
 	if group and group.settings then
 		for _, setting in ipairs(group.settings) do
-			local value
-			if setting.type == "action" then
-				value = nil
-			elseif setting.get then
-				pcall(function()
-					value = setting.get()
-				end)
+			if setting.type == "spacer" then
+				if setting.top == nil then
+					setting.top = false
+				end
+				if setting.bottom == nil then
+					setting.bottom = false
+				end
+				if setting.top then
+					table.insert(lines, render_setting_line({ type = "spacer_line" }, nil))
+					table.insert(meta, { type = "spacer_line" })
+				end
+				local value = nil
+				local line = render_setting_line(setting, value)
+				table.insert(lines, line)
+				table.insert(meta, { type = "spacer", setting = setting })
+				if setting.bottom then
+					table.insert(lines, render_setting_line({ type = "spacer_line" }, nil))
+					table.insert(meta, { type = "spacer_line" })
+				end
+			else
+				local value
+				if setting.type == "action" then
+					value = nil
+				elseif setting.get then
+					pcall(function()
+						value = setting.get()
+					end)
+				end
+				if value == nil and setting.type ~= "action" then
+					value = data.load(setting.name)
+				end
+				if value == nil and setting.default ~= nil and setting.type ~= "action" then
+					value = setting.default
+				end
+				local line = render_setting_line(setting, value)
+				table.insert(lines, line)
+				table.insert(meta, { type = setting.type, setting = setting })
 			end
-			if value == nil and setting.type ~= "action" then
-				value = data.load(setting.name)
-			end
-			if value == nil and setting.default ~= nil and setting.type ~= "action" then
-				value = setting.default
-			end
-			local line = render_setting_line(setting, value)
-			table.insert(lines, line)
 		end
 	end
-	return lines
+	return lines, meta
 end
 
 local function get_keybindings_line(setting_type)
@@ -69,6 +117,8 @@ local function get_keybindings_line(setting_type)
 		return base_bindings .. edit_bindings
 	elseif setting_type == "action" then
 		return base_bindings .. action_bindings
+	elseif setting_type == "spacer" or setting_type == "spacer_line" then
+		return base_bindings
 	else
 		return base_bindings .. edit_bindings
 	end
@@ -108,14 +158,29 @@ M.open = function(tab_selector, id_or_row)
 	end
 
 	local group = config.groups[active_tab]
-	local active_setting_row = 1
+	local function get_first_selectable_setting_row(meta)
+		if not meta then
+			return 1
+		end
+		for i, m in ipairs(meta) do
+			if m.type ~= "spacer" and m.type ~= "spacer_line" then
+				return i
+			end
+		end
+		return 1
+	end
+
+	local content_lines, meta = get_settings_lines(group)
+	local active_setting_row = get_first_selectable_setting_row(meta)
 	if id_or_row and group and group.settings then
-		local idx = tonumber(id_or_row)
-		if idx and group.settings[idx] then
-			active_setting_row = idx
-		else
-			for i, setting in ipairs(group.settings) do
-				if setting.name == id_or_row then
+		for i, m in ipairs(meta) do
+			local s = m.setting
+			if m.type ~= "spacer" and m.type ~= "spacer_line" then
+				local idx = tonumber(id_or_row)
+				if idx and i == idx then
+					active_setting_row = i
+					break
+				elseif s and s.name == id_or_row then
 					active_setting_row = i
 					break
 				end
@@ -206,7 +271,7 @@ M.open = function(tab_selector, id_or_row)
 		table.insert(lines, sep)
 
 		local current_group = config.groups[active_tab]
-		local content_lines = get_settings_lines(current_group)
+		content_lines, meta = get_settings_lines(current_group)
 
 		for _, l in ipairs(content_lines) do
 			table.insert(lines, l)
@@ -218,8 +283,8 @@ M.open = function(tab_selector, id_or_row)
 		end
 
 		local setting_type = "string"
-		if current_group and current_group.settings and current_group.settings[active_setting_row] then
-			setting_type = current_group.settings[active_setting_row].type or "string"
+		if meta and meta[active_setting_row] then
+			setting_type = meta[active_setting_row].type or "string"
 		end
 
 		table.insert(lines, get_keybindings_line(setting_type))
@@ -257,11 +322,25 @@ M.open = function(tab_selector, id_or_row)
 		for i, line in ipairs(content_lines) do
 			if i <= content_height then
 				local line_index = i + header_height - 1
-				local is_active = (active_setting_row == i)
-				local icon_hl = is_active and "LvimControlCenterIconActive" or "LvimControlCenterIconInactive"
-				local line_hl = is_active and "LvimControlCenterLineActive" or "LvimControlCenterLineInactive"
+				local m = meta and meta[i]
+				local is_spacer = m and m.type == "spacer"
+				local is_spacer_line = m and m.type == "spacer_line"
+				local is_active = (active_setting_row == i) and not is_spacer and not is_spacer_line
+				local icon_hl = is_spacer and "LvimControlCenterSpacerIcon"
+					or is_spacer_line and "LvimControlCenterSpacerLine"
+					or (is_active and "LvimControlCenterIconActive" or "LvimControlCenterIconInactive")
+				local line_hl = is_spacer and "LvimControlCenterSpacer"
+					or is_spacer_line and "LvimControlCenterSpacerLine"
+					or (is_active and "LvimControlCenterLineActive" or "LvimControlCenterLineInactive")
 
-				local icon_len = 2
+				local icon_len = 0
+				if is_spacer then
+					icon_len = #(config.icons.is_spacer or " ")
+				elseif is_spacer_line then
+					icon_len = 0
+				else
+					icon_len = 2
+				end
 				if icon_len > 0 then
 					vim.api.nvim_buf_set_extmark(buf, ns_id, line_index, 0, {
 						end_col = icon_len,
@@ -301,8 +380,31 @@ M.open = function(tab_selector, id_or_row)
 			priority = 100,
 		})
 
-		local target_row = content_start_line + active_setting_row - 1
-		vim.api.nvim_win_set_cursor(win, { target_row, 0 })
+		local function get_cursor_row()
+			if not meta then
+				return content_start_line
+			end
+			if
+				meta[active_setting_row]
+				and meta[active_setting_row].type ~= "spacer"
+				and meta[active_setting_row].type ~= "spacer_line"
+			then
+				return content_start_line + active_setting_row - 1
+			end
+			for i = active_setting_row + 1, #meta do
+				if meta[i].type ~= "spacer" and meta[i].type ~= "spacer_line" then
+					return content_start_line + i - 1
+				end
+			end
+			for i = active_setting_row - 1, 1, -1 do
+				if meta[i].type ~= "spacer" and meta[i].type ~= "spacer_line" then
+					return content_start_line + i - 1
+				end
+			end
+			return content_start_line
+		end
+
+		vim.api.nvim_win_set_cursor(win, { get_cursor_row(), 0 })
 
 		vim.api.nvim_set_option_value("scrolloff", header_height, { win = win })
 		vim.api.nvim_set_option_value("sidescrolloff", 0, { win = win })
@@ -311,17 +413,32 @@ M.open = function(tab_selector, id_or_row)
 		vim.bo[buf].modifiable = false
 	end
 
-	local function set_keymaps()
-		local function move_row(delta)
-			local group_move = config.groups[active_tab]
-			local count = #(group_move.settings or {})
-			if count == 0 then
-				return
-			end
-			active_setting_row = math.max(1, math.min(count, active_setting_row + delta))
-			draw()
+	local function move_row(delta)
+		local count = meta and #meta or 0
+		if count == 0 then
+			return
 		end
+		local new_row = active_setting_row
+		repeat
+			new_row = new_row + delta
+		until new_row < 1 or new_row > count or (meta[new_row].type ~= "spacer" and meta[new_row].type ~= "spacer_line")
+		if new_row < 1 then
+			new_row = get_first_selectable_setting_row(meta)
+		elseif new_row > count then
+			for i = count, 1, -1 do
+				if meta[i].type ~= "spacer" and meta[i].type ~= "spacer_line" then
+					new_row = i
+					break
+				end
+			end
+		end
+		if meta[new_row] and meta[new_row].type ~= "spacer" and meta[new_row].type ~= "spacer_line" then
+			active_setting_row = new_row
+		end
+		draw()
+	end
 
+	local function set_keymaps()
 		vim.api.nvim_buf_set_keymap(buf, "n", "j", "", {
 			nowait = true,
 			noremap = true,
@@ -343,7 +460,8 @@ M.open = function(tab_selector, id_or_row)
 			callback = function()
 				if active_tab < group_count then
 					active_tab = active_tab + 1
-					active_setting_row = 1
+					content_lines, meta = get_settings_lines(config.groups[active_tab])
+					active_setting_row = get_first_selectable_setting_row(meta)
 					draw()
 				end
 			end,
@@ -354,7 +472,8 @@ M.open = function(tab_selector, id_or_row)
 			callback = function()
 				if active_tab > 1 then
 					active_tab = active_tab - 1
-					active_setting_row = 1
+					content_lines, meta = get_settings_lines(config.groups[active_tab])
+					active_setting_row = get_first_selectable_setting_row(meta)
 					draw()
 				end
 			end,
@@ -380,13 +499,13 @@ M.open = function(tab_selector, id_or_row)
 			nowait = true,
 			noremap = true,
 			callback = function()
-				local group_cr = config.groups[active_tab]
-				local setting = group_cr.settings and group_cr.settings[active_setting_row]
-				if not setting then
+				local m = meta and meta[active_setting_row]
+				local setting = m and m.setting
+				if not setting or m.type == "spacer" or m.type == "spacer_line" then
 					return
 				end
 
-				if setting.type == "bool" or setting.type == "boolean" then
+				if m.type == "bool" or m.type == "boolean" then
 					local value = data.load(setting.name)
 					if value == nil then
 						value = setting.default
@@ -398,7 +517,7 @@ M.open = function(tab_selector, id_or_row)
 						data.save(setting.name, value)
 					end
 					draw()
-				elseif setting.type == "select" and setting.options then
+				elseif m.type == "select" and setting.options then
 					local value = data.load(setting.name)
 					if value == nil then
 						value = setting.default or setting.options[1]
@@ -417,7 +536,7 @@ M.open = function(tab_selector, id_or_row)
 						data.save(setting.name, next_val)
 					end
 					draw()
-				elseif setting.type == "text" or setting.type == "string" then
+				elseif m.type == "text" or m.type == "string" then
 					local prompt = "Set " .. (setting.label or setting.name) .. ":"
 					vim.ui.input(
 						{ prompt = prompt, default = tostring(data.load(setting.name) or setting.default or "") },
@@ -432,7 +551,7 @@ M.open = function(tab_selector, id_or_row)
 							end
 						end
 					)
-				elseif setting.type == "int" or setting.type == "integer" then
+				elseif m.type == "int" or m.type == "integer" then
 					local prompt = "Set " .. (setting.label or setting.name) .. ":"
 					vim.ui.input(
 						{ prompt = prompt, default = tostring(data.load(setting.name) or setting.default or "") },
@@ -452,7 +571,7 @@ M.open = function(tab_selector, id_or_row)
 							end
 						end
 					)
-				elseif setting.type == "float" or setting.type == "number" then
+				elseif m.type == "float" or m.type == "number" then
 					local prompt = "Set " .. (setting.label or setting.name) .. ":"
 					vim.ui.input(
 						{ prompt = prompt, default = tostring(data.load(setting.name) or setting.default or "") },
@@ -472,7 +591,7 @@ M.open = function(tab_selector, id_or_row)
 							end
 						end
 					)
-				elseif setting.type == "action" then
+				elseif m.type == "action" then
 					if setting.run and type(setting.run) == "function" then
 						setting.run(origin_bufnr)
 					else
@@ -487,10 +606,10 @@ M.open = function(tab_selector, id_or_row)
 			nowait = true,
 			noremap = true,
 			callback = function()
-				local group_bs = config.groups[active_tab]
-				local setting = group_bs.settings and group_bs.settings[active_setting_row]
+				local m = meta and meta[active_setting_row]
+				local setting = m and m.setting
 
-				if not setting or setting.type ~= "select" or not setting.options then
+				if not setting or m.type ~= "select" or not setting.options then
 					return
 				end
 
