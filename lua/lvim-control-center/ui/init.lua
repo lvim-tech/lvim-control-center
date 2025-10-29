@@ -131,15 +131,52 @@ local function apply_cursor_blending(win)
 
 	local augroup_name = "LvimControlCenterCursorBlend"
 	local cursor_blend_augroup = vim.api.nvim_create_augroup(augroup_name, { clear = true })
-	vim.cmd("hi Cursor blend=100")
-	vim.api.nvim_create_autocmd({ "WinLeave", "WinEnter" }, {
+
+	local function set_cursor_blend(value)
+		pcall(function()
+			vim.cmd("hi Cursor blend=" .. value)
+		end)
+	end
+
+	vim.api.nvim_create_autocmd("WinEnter", {
 		group = cursor_blend_augroup,
 		callback = function()
-			local current_event_win = vim.api.nvim_get_current_win()
-			local blend_value = current_event_win == win and 100 or 0
-			vim.cmd("hi Cursor blend=" .. blend_value)
+			if vim.api.nvim_get_current_win() == win then
+				set_cursor_blend(100)
+			else
+				set_cursor_blend(0)
+			end
 		end,
 	})
+
+	vim.api.nvim_create_autocmd({ "WinLeave", "WinClosed" }, {
+		group = cursor_blend_augroup,
+		callback = function()
+			set_cursor_blend(0)
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("CmdlineEnter", {
+		group = cursor_blend_augroup,
+		callback = function()
+			set_cursor_blend(0)
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("CmdlineLeave", {
+		group = cursor_blend_augroup,
+		callback = function()
+			if vim.api.nvim_get_current_win() == win then
+				set_cursor_blend(100)
+			else
+				set_cursor_blend(0)
+			end
+		end,
+	})
+
+	if vim.api.nvim_get_current_win() == win then
+		set_cursor_blend(100)
+	end
 end
 
 M.open = function(tab_selector, id_or_row)
@@ -213,7 +250,7 @@ M.open = function(tab_selector, id_or_row)
 		zindex = 10,
 		border = config.border or "single",
 		style = "minimal",
-		noautocmd = true,
+		noautocmd = false,
 	})
 	_G.LVIM_CONTROL_CENTER_WIN = win
 
