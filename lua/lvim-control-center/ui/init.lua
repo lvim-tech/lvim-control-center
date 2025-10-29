@@ -174,6 +174,16 @@ local function apply_cursor_blending(win)
 		end,
 	})
 
+	vim.api.nvim_create_autocmd("BufWinEnter", {
+		group = cursor_blend_augroup,
+		buffer = vim.api.nvim_win_get_buf(win),
+		callback = function()
+			if vim.api.nvim_get_current_win() == win then
+				set_cursor_blend(100)
+			end
+		end,
+	})
+
 	if vim.api.nvim_get_current_win() == win then
 		set_cursor_blend(100)
 	end
@@ -446,6 +456,10 @@ M.open = function(tab_selector, id_or_row)
 		vim.api.nvim_set_option_value("scrolloff", header_height, { win = win })
 		vim.api.nvim_set_option_value("sidescrolloff", 0, { win = win })
 		vim.api.nvim_set_option_value("scrolloff", header_height, { win = win })
+
+		pcall(function()
+			vim.cmd("hi Cursor blend=100")
+		end)
 
 		vim.bo[buf].modifiable = false
 	end
