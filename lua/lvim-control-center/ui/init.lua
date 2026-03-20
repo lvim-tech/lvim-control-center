@@ -5,15 +5,19 @@
 -- user overrides (including popup.highlights) before the instance is built.
 
 local config = require("lvim-control-center.config")
-local data   = require("lvim-control-center.persistence.data")
+local data = require("lvim-control-center.persistence.data")
 
 -- Lazy UI instance — nil until the first open.
 local _instance = nil
 
 local function get_ui()
-	if _instance then return _instance end
+	if _instance then
+		return _instance
+	end
 	local ok, mod = pcall(require, "lvim-utils.ui")
-	if not ok then return nil end
+	if not ok then
+		return nil
+	end
 	_instance = mod.new(config.popup_global)
 	return _instance
 end
@@ -57,15 +61,15 @@ end
 ---@return table  Row table compatible with lvim-utils UiRow
 local function setting_to_row(setting, origin_bufnr)
 	local row = {
-		type    = setting.type,
-		name    = setting.name,
-		label   = setting.label or setting.desc or setting.name,
-		value   = load_value(setting),
+		type = setting.type,
+		name = setting.name,
+		label = setting.label or setting.desc or setting.name,
+		value = load_value(setting),
 		default = setting.default,
 		options = setting.options,
-		top     = setting.top,
-		bottom  = setting.bottom,
-		icon    = setting.icon,
+		top = setting.top,
+		bottom = setting.bottom,
+		icon = setting.icon,
 	}
 	if setting.type == "action" and setting.run then
 		local s_run = setting.run
@@ -96,7 +100,9 @@ M.open = function(tab_selector, id_or_row)
 	end
 
 	local ui = get_ui()
-	if not ui then return end
+	if not ui then
+		return
+	end
 
 	-- Remember the calling buffer so action callbacks can reference it.
 	local origin_bufnr = vim.api.nvim_get_current_buf()
@@ -112,9 +118,9 @@ M.open = function(tab_selector, id_or_row)
 		-- Strip any trailing whitespace that may have been appended to the icon.
 		local raw_icon = ((group.icon or ""):match("^(.-)%s*$"))
 		table.insert(tabs, {
-			icon  = raw_icon ~= "" and raw_icon or nil,
+			icon = raw_icon ~= "" and raw_icon or nil,
 			label = group.label or group.name,
-			rows  = rows,
+			rows = rows,
 		})
 	end
 
@@ -132,7 +138,9 @@ M.open = function(tab_selector, id_or_row)
 	---@param row table  The modified row (lvim-utils Row shape)
 	local function on_change(row)
 		local setting = setting_by_name[row.name]
-		if not setting then return end
+		if not setting then
+			return
+		end
 		if setting.set then
 			pcall(setting.set, row.value, false, origin_bufnr)
 		else
@@ -142,12 +150,14 @@ M.open = function(tab_selector, id_or_row)
 
 	_is_open = true
 	ui.tabs({
-		title        = config.title,
-		tabs         = tabs,
+		title = config.title,
+		tabs = tabs,
 		tab_selector = tab_selector,
-		initial_row  = id_or_row,
-		on_change    = on_change,
-		callback     = function() _is_open = false end,
+		initial_row = id_or_row,
+		on_change = on_change,
+		callback = function()
+			_is_open = false
+		end,
 	})
 end
 
