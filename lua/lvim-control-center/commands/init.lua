@@ -2,7 +2,7 @@
 -- Registers Neovim user commands and applies settings that were persisted from
 -- a previous session.
 
-local ui   = require("lvim-control-center.ui")
+local ui = require("lvim-control-center.ui")
 local data = require("lvim-control-center.persistence.data")
 
 local M = {}
@@ -14,11 +14,11 @@ function M.init()
 	--   tab  — tab name or 1-based index to activate on open (optional)
 	--   row  — row name or 1-based index to focus on open  (optional)
 	vim.api.nvim_create_user_command("LvimControlCenter", function(opts)
-		local tab       = opts.fargs[1]
+		local tab = opts.fargs[1]
 		local id_or_row = opts.fargs[2]
 		ui.open(tab, id_or_row)
 	end, {
-		desc  = "Open LVIM Control Center",
+		desc = "Open LVIM Control Center",
 		nargs = "*",
 	})
 

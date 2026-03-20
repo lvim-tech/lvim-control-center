@@ -1,30 +1,22 @@
 -- lua/lvim-control-center/ui/init.lua
 -- Bridges the control-center config to a dedicated lvim-utils UI instance.
 --
--- A fresh instance is created once at require-time so that all highlight,
--- icon, key, and layout overrides defined in config are isolated to this
--- plugin and never bleed into other lvim-utils popups.
+-- The instance is created lazily on first open so that setup() can deep-merge
+-- user overrides (including popup.highlights) before the instance is built.
 
 local config = require("lvim-control-center.config")
 local data   = require("lvim-control-center.persistence.data")
 
--- Keys that belong to the control center itself and must not be forwarded to
--- the lvim-utils instance config (they have no meaning there).
-local _internal = { groups = true, save = true, title = true }
+-- Lazy UI instance — nil until the first open.
+local _instance = nil
 
--- Build the instance config by copying every field that is not internal.
-local function build_instance_cfg()
-	---@type table
-	local cfg = {}
-	for k, v in pairs(config) do
-		if not _internal[k] then cfg[k] = v end
-	end
-	return cfg
+local function get_ui()
+	if _instance then return _instance end
+	local ok, mod = pcall(require, "lvim-utils.ui")
+	if not ok then return nil end
+	_instance = mod.new(config.popup_global)
+	return _instance
 end
-
--- Dedicated UI instance — carries this plugin's highlight / icon / key / layout
--- overrides without touching the global LvimUi* named groups.
-local ui = require("lvim-utils.ui").new(build_instance_cfg())
 
 local M = {}
 
@@ -39,13 +31,21 @@ local _is_open = false
 ---@param setting LccSetting
 ---@return any
 local function load_value(setting)
-	if setting.type == "action" then return nil end
+	if setting.type == "action" then
+		return nil
+	end
 	local value
 	if setting.get then
-		pcall(function() value = setting.get() end)
+		pcall(function()
+			value = setting.get()
+		end)
 	end
-	if value == nil then value = data.load(setting.name) end
-	if value == nil then value = setting.default end
+	if value == nil then
+		value = data.load(setting.name)
+	end
+	if value == nil then
+		value = setting.default
+	end
 	return value
 end
 
@@ -71,7 +71,9 @@ local function setting_to_row(setting, origin_bufnr)
 		local s_run = setting.run
 		---@cast s_run fun(bufnr: integer)
 		row.run = function(_, _close)
-			pcall(function() s_run(origin_bufnr) end)
+			pcall(function()
+				s_run(origin_bufnr)
+			end)
 		end
 	end
 	return row
@@ -84,12 +86,17 @@ end
 ---@param tab_selector string|integer|nil  Tab to activate on open (name or 1-based index)
 ---@param id_or_row    string|integer|nil  Row to focus on open (name or 1-based index)
 M.open = function(tab_selector, id_or_row)
-	if _is_open then return end
+	if _is_open then
+		return
+	end
 
 	if not config.groups or #config.groups == 0 then
 		vim.notify("No settings groups found!", vim.log.levels.ERROR)
 		return
 	end
+
+	local ui = get_ui()
+	if not ui then return end
 
 	-- Remember the calling buffer so action callbacks can reference it.
 	local origin_bufnr = vim.api.nvim_get_current_buf()
@@ -115,7 +122,9 @@ M.open = function(tab_selector, id_or_row)
 	local setting_by_name = {}
 	for _, group in ipairs(config.groups) do
 		for _, setting in ipairs(group.settings or {}) do
-			setting_by_name[setting.name] = setting
+			if setting.name then
+				setting_by_name[setting.name] = setting
+			end
 		end
 	end
 

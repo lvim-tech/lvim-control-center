@@ -2,9 +2,9 @@
 -- Plugin entry point.  Call M.setup() once from your Neovim config to
 -- initialise the database, register user commands, and apply saved settings.
 
-local config   = require("lvim-control-center.config")
-local db       = require("lvim-control-center.persistence.db")
-local utils    = require("lvim-control-center.utils")
+local config = require("lvim-control-center.config")
+local db = require("lvim-control-center.persistence.db")
+local utils = require("lvim-control-center.utils")
 local commands = require("lvim-control-center.commands")
 
 local M = {}
@@ -21,20 +21,6 @@ function M.setup(user_config)
 
 	-- Initialise the SQLite persistence layer.
 	db.init(config.save)
-
-	-- Register named LvimCc* highlight groups via lvim-utils.highlight so they
-	-- survive colorscheme changes (mirrors how lvim-space registers its groups).
-	local ok_hl, hl = pcall(require, "lvim-utils.highlight")
-	if ok_hl then
-		local hl_mod = require("lvim-control-center.config.highlights")
-		hl.register(hl_mod.highlights, false)
-		hl.setup()
-		pcall(function()
-			require("lvim-utils.colors").on_change(function()
-				hl.register(hl_mod.build(), true)
-			end)
-		end)
-	end
 
 	-- Optionally set up the lvim-utils cursor module for the UI filetype.
 	-- Wrapped in pcall so the plugin remains functional even when lvim-utils

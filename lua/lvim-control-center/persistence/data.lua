@@ -2,7 +2,7 @@
 -- High-level persistence API.
 -- Translates between Lua values and the (type, text) pairs stored in SQLite.
 
-local db     = require("lvim-control-center.persistence.db")
+local db = require("lvim-control-center.persistence.db")
 local config = require("lvim-control-center.config")
 
 local M = {}
@@ -48,7 +48,9 @@ local function decode_value(val, val_type)
 		return val == "1"
 	elseif val_type == "json" then
 		local ok, decoded = pcall(vim.fn.json_decode, val)
-		if ok then return decoded end
+		if ok then
+			return decoded
+		end
 		return nil
 	else
 		return val
