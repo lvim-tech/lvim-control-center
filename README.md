@@ -21,21 +21,40 @@
 
 ## 💾 Installation
 
-It's recommended to use [lazy.nvim](https://github.com/folke/lazy.nvim).
+### lazy.nvim
 
 ```lua
--- lazy.nvim
-return {
-	{
-		"lvim-tech/lvim-control-center",
-		dependencies = { "kkharji/sqlite.lua" },
-		config = function()
-			-- Configuration goes here, see the section below
-			require("lvim-control-center").setup({
-				-- ...
-			})
-		end,
-	},
+{
+    "lvim-tech/lvim-control-center",
+    dependencies = { "lvim-tech/lvim-utils", "kkharji/sqlite.lua" },
+    config = function()
+        require("lvim-control-center").setup({ ... })
+    end,
+}
+```
+
+### Native (vim.pack / packadd)
+
+```lua
+-- In your init.lua, after the plugin is on the runtimepath:
+vim.pack.add({
+    { src = "https://github.com/lvim-tech/lvim-utils" },
+    { src = "https://github.com/kkharji/sqlite.lua" },
+    { src = "https://github.com/lvim-tech/lvim-control-center" },
+})
+
+require("lvim-control-center").setup({ ... })
+```
+
+### packer.nvim
+
+```lua
+use {
+    "lvim-tech/lvim-control-center",
+    requires = { "lvim-tech/lvim-utils", "kkharji/sqlite.lua" },
+    config = function()
+        require("lvim-control-center").setup({ ... })
+    end,
 }
 ```
 
