@@ -4,7 +4,7 @@
 
 local config = require("lvim-control-center.config")
 local db = require("lvim-control-center.persistence.db")
-local utils = require("lvim-control-center.utils")
+local utils = require("lvim-utils.utils")
 local commands = require("lvim-control-center.commands")
 
 local M = {}

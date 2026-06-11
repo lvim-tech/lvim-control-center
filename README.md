@@ -21,6 +21,18 @@
 
 ## 💾 Installation
 
+### LVIM IDE
+
+Ships with LVIM IDE. Override its options in your user module
+(`lua/modules/user/init.lua`):
+
+```lua
+modules["lvim-tech/lvim-control-center"] = {
+    dependencies = { "lvim-tech/lvim-utils", "kkharji/sqlite.lua" },
+    opts = { ... },
+}
+```
+
 ### lazy.nvim
 
 ```lua

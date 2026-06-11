@@ -7,5 +7,3 @@ if vim.g.loaded_lvim_control_center then
 	return
 end
 vim.g.loaded_lvim_control_center = true
-
-require("lvim-control-center").setup({})
