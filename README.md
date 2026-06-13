@@ -36,11 +36,11 @@ modules["lvim-tech/lvim-control-center"] = {
 ### lazy.nvim
 
 ```lua
-{
+return {
     "lvim-tech/lvim-control-center",
     dependencies = { "lvim-tech/lvim-utils", "kkharji/sqlite.lua" },
     config = function()
-        require("lvim-control-center").setup({ ... })
+        require("lvim-control-center").setup({})
     end,
 }
 ```
@@ -55,19 +55,19 @@ vim.pack.add({
     { src = "https://github.com/lvim-tech/lvim-control-center" },
 })
 
-require("lvim-control-center").setup({ ... })
+require("lvim-control-center").setup({})
 ```
 
 ### packer.nvim
 
 ```lua
-use {
+use({
     "lvim-tech/lvim-control-center",
     requires = { "lvim-tech/lvim-utils", "kkharji/sqlite.lua" },
     config = function()
         require("lvim-control-center").setup({ ... })
     end,
-}
+})
 ```
 
 ## 🚀 Usage
@@ -96,11 +96,21 @@ use {
     ```
 
 - You can also open from Lua:
-    ````lua
+
+    ```lua
     require("lvim-control-center.ui").open("lsp", "codelens") -- by name
     require("lvim-control-center.ui").open("lsp", 2) -- by row (number)
-      ```
-    ````
+    ```
+
+### Manage settings
+
+```vim
+:LvimControlCenter export [path]    " export persisted settings to JSON
+:LvimControlCenter import [path]    " import settings from JSON and re-apply
+:LvimControlCenter reset [setting]  " reset one setting (or all) to its default
+```
+
+A bare setting name (`:LvimControlCenter codelens`) jumps straight to it. Command-line completion offers the verbs, every group and every setting name — a quick search across the whole config.
 
 ### Navigation
 
@@ -119,36 +129,35 @@ The configuration is passed to the `setup()` function. The most important part i
 This is the default configuration. You can override any of these fields in your own setup:
 
 ```lua
-{
-	save = "~/.local/share/nvim/lvim-control-center",
-	window_size = {
-		width = 0.8,
-		height = 0.8,
-	},
-	border = { " ", " ", " ", " ", " ", " ", " ", " " },
-	icons = {
-		is_true = "",
-		is_false = "",
-		is_select = "󱖫",
-		is_int = "󰎠",
-		is_float = "",
-		is_string = "󰬶",
-	},
-	highlights = {
-		LvimControlCenterPanel = { fg = "#505067", bg = "#1a1a22" },
-		LvimControlCenterSeparator = { fg = "#4a6494" },
-		LvimControlCenterTabActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
-		LvimControlCenterTabInactive = { fg = "#505067", bg = "#1a1a22" },
-		LvimControlCenterTabIconActive = { fg = "#b65252" },
-		LvimControlCenterTabIconInactive = { fg = "#a26666" },
-		LvimControlCenterBorder = { fg = "#4a6494", bg = "#1a1a22" },
-		LvimControlCenterTitle = { fg = "#b65252", bg = "#1a1a22", bold = true },
-		LvimControlCenterLineActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
-		LvimControlCenterLineInactive = { fg = "#505067", bg = "#1a1a22" },
-		LvimControlCenterIconActive = { fg = "#b65252" },
-		LvimControlCenterIconInactive = { fg = "#a26666" },
-	},
-}
+-- These are the defaults; pass any subset to override.
+require("lvim-control-center").setup({
+    title = "LVIM CONTROL CENTER",
+    save = "~/.local/share/nvim/lvim-control-center",
+    groups = {}, -- you define these (see below)
+
+    -- Forwarded verbatim to require("lvim-utils.ui").new(): popup geometry, icons, keys,
+    -- labels and highlight overrides. See lvim-utils for the full list of options + defaults.
+    popup_global = {
+        position = "editor",
+        width = 0.8,
+        max_width = 0.8,
+        height = "auto",
+        max_height = 0.8,
+        max_items = 15,
+        close_keys = { "q", "<Esc>" },
+        keys = {
+            down = "j",
+            up = "k",
+            confirm = "<CR>",
+            cancel = "<Esc>",
+            close = "q",
+            tabs = { next = "l", prev = "h" },
+        },
+        -- Empty by default — the panel uses the shared LvimUi* groups (self-themed from the
+        -- lvim-utils palette). Override them here (see "Customizing the Appearance").
+        highlights = {},
+    },
+})
 ```
 
 ---
@@ -158,131 +167,61 @@ This is the default configuration. You can override any of these fields in your 
 This is an example of how to set up two groups: "General" and "Appearance".
 
 ```lua
--- lua/plugins/lvim-control-center.lua
-
--- First, define your settings groups in separate files (good practice)
-local general_settings = {
-	name = "general", -- this is the internal key for jump-to
-	label = "General", -- this is what is shown as the tab
-	icon = "", -- Icons require a Nerd Font
-	settings = {
-		{
-			name = "relativenumber",
-			label = "Show relative line numbers",
-			type = "bool",
-			default = false,
-			get = function()
-				return vim.opt.relativenumber.get()
-			end,
-			set = function(val, on_init)
-				if on_init then
-					vim.opt.relativenumber = val
-				else
-					for _, win in ipairs(vim.api.nvim_list_wins()) do
-						local buf = vim.api.nvim_win_get_buf(win)
-						if not utils.is_excluded(buf, {}, { "neo-tree" }) then
-							vim.wo[win].relativenumber = val
-						end
-					end
-					data.save("relativenumber", val)
-				end
-			end,
-		},
-		{
-			name = "cursorline",
-			label = "Show cursor line",
-			type = "bool",
-			default = true,
-			get = function()
-				return vim.opt.cursorline.get()
-			end,
-			set = function(val, on_init)
-				if on_init then
-					vim.opt.cursorline = val
-				else
-					for _, win in ipairs(vim.api.nvim_list_wins()) do
-						local buf = vim.api.nvim_win_get_buf(win)
-						if not utils.is_excluded(buf, {}, { "neo-tree" }) then
-							vim.wo[win].cursorline = val
-						end
-					end
-					data.save("cursorline", val)
-				end
-			end,
-		},
-	},
+-- Define each settings group (one tab per group).
+local general = {
+    name = "general", -- internal key (used by jump-to)
+    label = "General", -- tab text
+    settings = {
+        {
+            name = "relativenumber",
+            label = "Relative line numbers",
+            type = "bool",
+            default = false,
+            get = function()
+                return vim.o.relativenumber
+            end,
+            -- set(value, is_load, bufnr): is_load is true while persisted values are applied on startup
+            set = function(value)
+                vim.o.relativenumber = value
+            end,
+        },
+    },
 }
 
-local appearance_settings = {
-	name = "appearance",
-	label = "Appearance",
-	icon = "",
-	settings = {
-		{
-			name = "colorscheme",
-			label = "Colorscheme",
-			type = "select",
-			options = { "lvim-dark", "lvim-darker", "lvim-everforest", "lvim-gruvbox", "lvim-kanagawa", "lvim-light" },
-			default = "lvim-darker",
-			break_load = true,
-			get = function()
-				if _G.LVIM_THEME ~= nil then
-					return _G.LVIM_THEME
-				else
-					return "lvim-darker"
-				end
-			end,
-			set = function(val, _)
-				_G.LVIM_THEME = val
-				vim.cmd("colorscheme " .. val)
-				funcs.write_file(_G.global.lvim_path .. "/.configs/lvim/.theme", _G.LVIM_THEME)
-				---@diagnostic disable-next-line: undefined-field
-				if _G.LVIM_CONTROL_CENTER_WIN and is_control_center_focused(_G.LVIM_CONTROL_CENTER_WIN) then
-					vim.cmd("hi Cursor blend=100")
-				else
-					vim.cmd("hi Cursor blend=0")
-				end
-				data.save("colorscheme", val)
-			end,
-		},
-	},
+local appearance = {
+    name = "appearance",
+    label = "Appearance",
+    settings = {
+        {
+            name = "colorscheme",
+            label = "Colorscheme",
+            type = "select",
+            options = { "lvim-dark", "lvim-darker", "lvim-everforest-dark", "lvim-gruvbox-dark" },
+            default = "lvim-dark",
+            break_load = true, -- don't re-apply on startup
+            get = function()
+                return vim.g.colors_name
+            end,
+            set = function(value)
+                vim.cmd("colorscheme " .. value)
+            end,
+        },
+        {
+            name = "reload",
+            label = "Reload config",
+            type = "action",
+            run = function(bufnr)
+                vim.notify("Reloaded for buffer " .. bufnr)
+            end,
+        },
+    },
 }
 
--- Now, call the setup function with your groups
 require("lvim-control-center").setup({
-	-- Pass the defined groups here
-	groups = {
-		general_settings,
-		appearance_settings,
-	},
-	-- You can override default options here as well
-	window_size = {
-		width = 0.8, -- 80% of the editor width
-		height = 0.8, -- 80% of the editor height
-	},
-	border = { " ", " ", " ", " ", " ", " ", " ", " " },
-	icons = {
-		is_true = "",
-		is_false = "",
-		is_select = "󱖫",
-		is_int = "󰎠",
-		is_float = "",
-		is_string = "󰬶",
-	},
-	highlights = {
-		LvimControlCenterPanel = { fg = "#505067", bg = "#1a1a22" },
-		LvimControlCenterSeparator = { fg = "#4a6494" },
-		LvimControlCenterTabActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
-		LvimControlCenterTabInactive = { fg = "#505067", bg = "#1a1a22" },
-		LvimControlCenterTabIconActive = { fg = "#b65252" },
-		LvimControlCenterTabIconInactive = { fg = "#a26666" },
-		LvimControlCenterBorder = { fg = "#4a6494", bg = "#1a1a22" },
-		LvimControlCenterTitle = { fg = "#b65252", bg = "#1a1a22", bold = true },
-		LvimControlCenterLineActive = { fg = "#1a1a22", bg = "#4a6494", bold = true },
-		LvimControlCenterLineInactive = { fg = "#505067", bg = "#1a1a22" },
-		LvimControlCenterIconActive = { fg = "#b65252" },
-		LvimControlCenterIconInactive = { fg = "#a26666" },
-	},
+    groups = { general, appearance },
+    popup_global = {
+        width = 0.6, -- override any popup_global option here
+    },
 })
 ```
 
@@ -294,52 +233,69 @@ Each setting is a table with the following fields:
 | :-------- | :----------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `name`    | `string`                 | **Required.** A unique internal identifier. Often matches the option name in `vim.opt`.                                                                 |
 | `label`   | `string`                 | **Required.** The name displayed in the user interface.                                                                                                 |
-| `type`    | `string`                 | **Required.** The type of setting: `bool`, `boolean`, `string`, `text`, `select`, `int`, `integer`, `float`, `number`.                                  |
-| `default` | `any`                    | The default value to be used if no value is found in the database.                                                                                      |
-| `icon`    | `string`                 | (Optional) An icon to display for the setting.                                                                                                          |
-| `options` | `table`                  | (For `type="select"`) A list of strings with the possible values.                                                                                       |
-| `get`     | `function()`             | (Optional) A function that returns the current value of the setting. Used for display in the UI.                                                        |
-| `set`     | `function(val, on_init)` | A function that is called when the value is changed. `val` is the new value. **You must call `data.save(setting.name, val)` to persist the new value.** |
+| `type`    | `string`                 | **Required.** The type of row: `bool`, `int`, `float`, `string`, `select`, `action`, `spacer` (aliases `boolean`/`integer`/`number`/`text` also work).  |
+| `default` | `any`                    | The default value used when nothing is persisted.                                                                                                       |
+| `icon`    | `string`                 | (Optional) A per-row icon.                                                                                                                              |
+| `options` | `any[]`                  | (For `type="select"`) The list of possible values.                                                                                                     |
+| `get`     | `function(): any`        | (Optional) Returns the current live value (shown in the UI). Resolution: `get()` → persisted value → `default`.                                         |
+| `set`     | `function(value, is_load, bufnr?)` | Called when the value changes (`is_load=false`) and once per persisted value on startup (`is_load=true`). Persist yourself with `require("lvim-control-center.persistence.data").save(name, value)` if the value is not derived from live editor state. |
+| `run`     | `function(bufnr)`        | (For `type="action"`) Callback run when the row is activated; receives the buffer that was current when the panel opened.                                |
+| `break_load` | `boolean`             | (Optional) Skip applying this setting on startup.                                                                                                       |
+| `enabled` | `function(): boolean`    | (Optional) Hide the row when it returns `false` (evaluated on open) — for settings that don't apply in the current context.                             |
+| `validate` | `function(value): boolean` | (Optional) Reject a changed value when it returns `false`; it is neither applied nor persisted.                                                       |
+| `desc`    | `string`                 | (Optional) Shown live as a help line (the panel subtitle) for the focused setting.                                                                      |
 
 #### The set function
 
-The `set` function is the heart of the plugin. It receives a single argument:
+`set` receives three arguments:
 
-1.  `val`: The new value the user has selected.
+1. `value` — the new value.
+2. `is_load` — `true` while a persisted value is being applied on startup, `false` on a user change. Use it to skip side effects (notifications, file writes) during restore.
+3. `bufnr` — the buffer that was current when the panel opened.
 
-To persist the new value, **you must call** your own function for saving, for example:
+If the value is derived from live editor state (e.g. `vim.o.*`), `get`/`set` are enough — no manual persistence is needed. To persist a value across sessions, save it yourself:
 
 ```lua
-set = function(val)
-	data.save("relativenumber", val)
+local data = require("lvim-control-center.persistence.data")
+
+set = function(value, is_load)
+    vim.o.relativenumber = value
+    if not is_load then
+        data.save("relativenumber", value)
+    end
 end
 ```
 
-If you use extra helpers (like `utils.is_excluded(...)`), you must provide them in your own configuration.
-
 ## 🎨 Customizing the Appearance
 
-You can change the colors by redefining any of the following highlight groups in your `colorscheme.lua` or `config.lua`:
+The panel is rendered by [lvim-utils](https://github.com/lvim-tech/lvim-utils), so it is themed by the shared `LvimUi*` highlight groups. These self-theme from the lvim-utils palette and follow the active lvim-colorscheme automatically — normally you don't need to set anything, the panel matches the rest of the lvim-tech UI.
+
+To override the panel's look, pass highlight overrides to the lvim-utils UI instance via `popup_global.highlights` in `setup()`:
 
 ```lua
--- Example
-vim.api.nvim_set_hl(0, "LvimControlCenterPanel", { bg = "#2D2A2E" })
-vim.api.nvim_set_hl(0, "LvimControlCenterTabActive", { bg = "#4A454D", fg = "#CAC5CA" })
+require("lvim-control-center").setup({
+    popup_global = {
+        highlights = {
+            -- map a panel element to an inline def or another group
+            LvimUiTitle = { fg = "#89b4fa", bold = true },
+            LvimUiTabActive = { bg = "#313244", fg = "#cdd6f4" },
+        },
+    },
+})
 ```
 
-| Group                              | Description                      |
-| :--------------------------------- | :------------------------------- |
-| `LvimControlCenterPanel`           | Background of the entire panel   |
-| `LvimControlCenterBorder`          | Color of the border              |
-| `LvimControlCenterSeparator`       | The line under the tabs          |
-| `LvimControlCenterTabActive`       | Active tab                       |
-| `LvimControlCenterTabInactive`     | Inactive tab                     |
-| `LvimControlCenterTabIconActive`   | Icon in an active tab            |
-| `LvimControlCenterTabIconInactive` | Icon in an inactive tab          |
-| `LvimControlCenterLineActive`      | Background of the selected row   |
-| `LvimControlCenterLineInactive`    | Background of a non-selected row |
-| `LvimControlCenterIconActive`      | Icon on the selected row         |
-| `LvimControlCenterIconInactive`    | Icon on a non-selected row       |
+| Group                                   | Description                    |
+| :-------------------------------------- | :----------------------------- |
+| `LvimUiNormal`                          | Panel background / normal text |
+| `LvimUiBorder`                          | Panel border                   |
+| `LvimUiSeparator`                       | The line under the tab bar     |
+| `LvimUiTitle`                           | Panel title                    |
+| `LvimUiTabActive` / `LvimUiTabInactive` | Active / inactive tab          |
+| `LvimUiCursorLine`                      | The selected (active) row      |
+| `LvimUiRowText*` / `LvimUiRowIcon*`     | Setting row text / icon        |
+| `LvimUiFooter*`                         | The key-hint bar               |
+
+See the [lvim-utils highlight groups](https://github.com/lvim-tech/lvim-utils#highlight-groups) for the full list.
 
 ## 🏃 Tips
 

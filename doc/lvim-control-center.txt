@@ -1,0 +1,147 @@
+*lvim-control-center.txt*   A settings panel for Neovim, grouped into tabs
+
+==============================================================================
+CONTENTS                                            *lvim-control-center*
+
+  1. Introduction ........................... |lvim-control-center-intro|
+  2. Setup .................................. |lvim-control-center-setup|
+  3. Groups ................................. |lvim-control-center-groups|
+  4. Settings ............................... |lvim-control-center-settings|
+  5. Command ................................ |lvim-control-center-command|
+  6. Navigation ............................. |lvim-control-center-navigation|
+  7. Persistence ............................ |lvim-control-center-persistence|
+  8. Appearance ............................. |lvim-control-center-appearance|
+
+==============================================================================
+1. INTRODUCTION                               *lvim-control-center-intro*
+
+lvim-control-center is a floating settings panel. You declare GROUPS (one tab each) of
+SETTINGS (toggles, selects, number/string inputs, actions); the panel reads each value,
+lets the user change it, persists it to SQLite, and applies it live. The panel is rendered
+by lvim-utils, so it shares the lvim-tech UI look and key bindings.
+
+Requires: |lvim-utils| (UI + persistence helpers) and sqlite.lua.
+
+==============================================================================
+2. SETUP                                      *lvim-control-center-setup*
+
+Call `setup()` once; the table is deep-merged into the live config.
+>lua
+  require("lvim-control-center").setup({
+      title = "LVIM CONTROL CENTER",   -- header title
+      save = "~/.local/share/nvim/lvim-control-center", -- SQLite dir
+      groups = {                       -- see |lvim-control-center-groups|
+          {
+              name = "editor",
+              label = "Editor",
+              icon = "",
+              settings = {
+                  {
+                      name = "wrap",
+                      type = "bool",
+                      label = "Line wrap",
+                      default = false,
+                      get = function() return vim.o.wrap end,
+                      set = function(v) vim.o.wrap = v end,
+                  },
+              },
+          },
+      },
+      popup_global = { ... },           -- forwarded to lvim-utils.ui.new()
+  })
+<
+`popup_global` is passed verbatim to `require("lvim-utils.ui").new()` — popup geometry,
+icons, keys, labels and highlight overrides (see |lvim-control-center-appearance|).
+
+==============================================================================
+3. GROUPS                                     *lvim-control-center-groups*
+
+Each group becomes one tab. *LccGroup*
+
+  name      string     unique group id
+  label?    string     tab text (falls back to name)
+  icon?     string     tab icon (trailing spaces stripped)
+  settings  LccSetting[]   the rows in this tab
+
+==============================================================================
+4. SETTINGS                                   *lvim-control-center-settings*
+
+Each setting is one row. *LccSetting*
+
+  name       string   unique id, used as the persistence key
+  type       "bool" | "int" | "float" | "string" | "select" | "action" | "spacer"
+  label?     string   display name (falls back to name)
+  desc?      string   alternative display name
+  default?   any      value applied when nothing is persisted
+  get?       fun(): any                      read the current live value
+  set?       fun(value, is_load, bufnr?)     apply a new value
+  run?       fun(bufnr)                       callback for `action` rows
+  options?   any[]    choices for `select` rows
+  icon?      string   per-row icon
+  break_load? boolean skip applying this setting on startup
+  enabled?   fun(): boolean              hide the row when it returns false (evaluated on
+                                         open) — for settings that don't apply right now
+  validate?  fun(value): boolean         reject a changed value when it returns false (it is
+                                         neither applied nor persisted)
+
+`desc` is shown live as a help line (the panel subtitle) for the focused setting.
+
+Value resolution on open: `get()` → persisted DB value → `default`. On change the new
+value is applied via `set()` (or stored directly when there is no `set`), and persisted.
+
+==============================================================================
+5. COMMAND                                    *lvim-control-center-command*
+
+                                                      *:LvimControlCenter*
+:LvimControlCenter                  Open the panel.
+:LvimControlCenter {tab}            Open focused on a tab (name or 1-based index).
+:LvimControlCenter {tab} {row}      Open focused on a specific setting (name or index).
+:LvimControlCenter {setting}        A bare setting name jumps straight to it (its group is
+                                    resolved for you).
+:LvimControlCenter export [path]    Export persisted settings to a JSON file (default:
+                                    stdpath("data")/lvim-control-center-export.json).
+:LvimControlCenter import [path]    Import settings from a JSON file and re-apply them.
+:LvimControlCenter reset [setting]  Reset one setting (or all when omitted) to its default
+                                    and clear the persisted value.
+
+Command-line completion offers the verbs, every group, and every setting name — so it
+doubles as a quick search across the whole config.
+
+==============================================================================
+6. NAVIGATION                               *lvim-control-center-navigation*
+
+  j / k          Move between settings
+  h / l          Switch group tab
+  <CR>           Toggle / cycle / edit / execute the focused setting
+  <Tab> / <BS>   Cycle a select option forward / backward
+  <Esc> / q      Close
+
+(All configurable via `popup_global.keys`.)
+
+==============================================================================
+7. PERSISTENCE                             *lvim-control-center-persistence*
+
+Values are stored in a SQLite database (`lvim-control-center.db`) under `save`. On
+`setup()` the saved values are re-applied (each setting's `set(value, true)`), unless the
+setting sets `break_load = true`. Requires sqlite.lua.
+
+==============================================================================
+8. APPEARANCE                               *lvim-control-center-appearance*
+
+The panel is a |lvim-utils| UI instance, themed by the shared `LvimUi*` groups which
+self-theme from the lvim-utils palette and follow the active lvim-colorscheme. To override,
+pass highlight overrides through `popup_global.highlights`:
+>lua
+  require("lvim-control-center").setup({
+      popup_global = {
+          highlights = {
+              LvimUiTitle = { fg = "#89b4fa", bold = true },
+              LvimUiTabActive = { bg = "#313244", fg = "#cdd6f4" },
+          },
+      },
+  })
+<
+See the lvim-utils help (`:help lvim-utils-highlights`) for the full group list.
+
+==============================================================================
+vim:tw=78:ts=8:noet:ft=help:norl:

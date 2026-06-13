@@ -18,6 +18,8 @@
 ---@field top?       any                            Extra metadata forwarded to lvim-utils
 ---@field bottom?    any                            Extra metadata forwarded to lvim-utils
 ---@field break_load? boolean                       Skip applying this setting on startup
+---@field enabled?   fun(): boolean                 When it returns false the row is hidden (evaluated on open)
+---@field validate?  fun(value: any): boolean       Reject a changed value when it returns false (not applied/persisted)
 
 ---@class LccGroup
 ---@field name      string        Unique group identifier
@@ -33,88 +35,88 @@
 
 ---@type LccConfig
 local M = {
-	-- ── internal ──────────────────────────────────────────────────────────
-	groups = {},
-	save = "~/.local/share/nvim/lvim-control-center",
-	title = "LVIM CONTROL CENTER",
+    -- ── internal ──────────────────────────────────────────────────────────
+    groups = {},
+    save = "~/.local/share/nvim/lvim-control-center",
+    title = "LVIM CONTROL CENTER",
 
-	-- ── lvim-utils ui instance config ────────────────────────────────────
-	popup_global = {
-		border = { "", "", "", " ", " ", " ", " ", " " },
-		position = "editor",
-		width = 0.8,
-		max_width = 0.8,
-		height = "auto",
-		max_height = 0.8,
-		max_items = 15,
-		filetype = "lvim-utils-ui",
-		close_keys = { "q", "<Esc>" },
-		markview = false,
+    -- ── lvim-utils ui instance config ────────────────────────────────────
+    popup_global = {
+        border = { "", "", "", " ", " ", " ", " ", " " },
+        position = "editor",
+        width = 0.8,
+        max_width = 0.8,
+        height = "auto",
+        max_height = 0.8,
+        max_items = 15,
+        filetype = "lvim-utils-ui",
+        close_keys = { "q", "<Esc>" },
+        markview = false,
 
-		icons = {
-			bool_on = "󰄬",
-			bool_off = "󰍴",
-			select = "󰘮",
-			number = "󰎠",
-			string = "󰬴",
-			action = "",
-			spacer = "    ──────",
-			multi_selected = "󰄬",
-			multi_empty = "󰍴",
-			current = "➤",
-		},
+        icons = {
+            bool_on = "󰄬",
+            bool_off = "󰍴",
+            select = "󰘮",
+            number = "󰎠",
+            string = "󰬴",
+            action = "",
+            spacer = "    ──────",
+            multi_selected = "󰄬",
+            multi_empty = "󰍴",
+            current = "➤",
+        },
 
-		labels = {
-			navigate = "navigate",
-			confirm = "confirm",
-			cancel = "cancel",
-			close = "close",
-			toggle = "toggle",
-			cycle = "cycle",
-			edit = "edit",
-			execute = "execute",
-			tabs = "tabs",
-		},
+        labels = {
+            navigate = "navigate",
+            confirm = "confirm",
+            cancel = "cancel",
+            close = "close",
+            toggle = "toggle",
+            cycle = "cycle",
+            edit = "edit",
+            execute = "execute",
+            tabs = "tabs",
+        },
 
-		keys = {
-			down = "j",
-			up = "k",
-			confirm = "<CR>",
-			cancel = "<Esc>",
-			close = "q",
+        keys = {
+            down = "j",
+            up = "k",
+            confirm = "<CR>",
+            cancel = "<Esc>",
+            close = "q",
 
-			tabs = {
-				next = "l",
-				prev = "h",
-			},
+            tabs = {
+                next = "l",
+                prev = "h",
+            },
 
-			select = {
-				confirm = "<CR>",
-				cancel = "<Esc>",
-			},
+            select = {
+                confirm = "<CR>",
+                cancel = "<Esc>",
+            },
 
-			multiselect = {
-				toggle = "<Space>",
-				confirm = "<CR>",
-				cancel = "<Esc>",
-			},
+            multiselect = {
+                toggle = "<Space>",
+                confirm = "<CR>",
+                cancel = "<Esc>",
+            },
 
-			list = {
-				next_option = "<Tab>",
-				prev_option = "<BS>",
-			},
-		},
+            list = {
+                next_option = "<Tab>",
+                prev_option = "<BS>",
+            },
+        },
 
-		-- Empty by default — uses lvim-utils global LvimUi* groups.
-		-- Override via setup({ popup_global = { highlights = { LvimUiTitle = "MyGroup" } } }).
-		highlights = {},
-	},
+        -- Empty by default — uses lvim-utils global LvimUi* groups.
+        -- Override via setup({ popup_global = { highlights = { LvimUiTitle = "MyGroup" } } }).
+        highlights = {},
+    },
 }
 
 -- Expand the tilde in the save path so all downstream code receives an
 -- absolute filesystem path rather than a shell-relative one.
 if M.save then
-	M.save = vim.fn.expand(M.save)
+    M.save = vim.fn.expand(M.save)
 end
 
 return M
