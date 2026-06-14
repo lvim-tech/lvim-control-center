@@ -70,6 +70,11 @@ local function setting_to_row(setting, origin_bufnr)
         top = setting.top,
         bottom = setting.bottom,
         icon = setting.icon,
+        -- `disabled` (boolean or predicate) marks a setting that exists but can't apply in the
+        -- current context — lvim-utils renders it dimmed + struck through without changing its
+        -- value. Evaluated live at render time, so it tracks a parent toggle (e.g. relative line
+        -- numbers being inert while "Show line numbers" is off).
+        disabled = setting.disabled,
     }
     if setting.type == "action" and setting.run then
         local s_run = setting.run

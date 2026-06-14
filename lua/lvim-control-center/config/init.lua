@@ -19,6 +19,7 @@
 ---@field bottom?    any                            Extra metadata forwarded to lvim-utils
 ---@field break_load? boolean                       Skip applying this setting on startup
 ---@field enabled?   fun(): boolean                 When it returns false the row is hidden (evaluated on open)
+---@field disabled?  boolean|fun(value: any): boolean  Render the row dimmed + struck through (value unchanged); evaluated live, so it can track a parent toggle
 ---@field validate?  fun(value: any): boolean       Reject a changed value when it returns false (not applied/persisted)
 
 ---@class LccGroup
