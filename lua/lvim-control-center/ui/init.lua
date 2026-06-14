@@ -128,6 +128,7 @@ M.open = function(tab_selector, id_or_row)
         local raw_icon = ((group.icon or ""):match("^(.-)%s*$"))
         table.insert(tabs, {
             icon = raw_icon ~= "" and raw_icon or nil,
+            name = group.name,
             label = group.label or group.name,
             rows = rows,
         })
@@ -169,23 +170,14 @@ M.open = function(tab_selector, id_or_row)
         end
     end
 
-    --- Live help line: show the focused setting's `desc` in the subtitle as the cursor moves.
-    ---@param row table
-    ---@return string
-    local function on_row_change(row)
-        local setting = setting_by_name[row.name]
-        return (setting and setting.desc) or ""
-    end
-
     _is_open = true
     ui.tabs({
         title = config.title,
-        subtitle = " ", -- reserved slot, filled live by on_row_change with the setting's desc
+        title_icon = "󰒓",
         tabs = tabs,
         tab_selector = tab_selector,
         initial_row = id_or_row,
         on_change = on_change,
-        on_row_change = on_row_change,
         callback = function()
             _is_open = false
         end,
