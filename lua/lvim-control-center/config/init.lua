@@ -61,7 +61,9 @@ local M = {
             number = "󰎠",
             string = "󰬴",
             action = "",
-            spacer = "    ──────",
+            -- 3 leading spaces so the separator line begins at the same column as a normal
+            -- row's text (indent + 1-cell icon + 2), not one column further in.
+            spacer = "   ──────",
             multi_selected = "󰄬",
             multi_empty = "󰍴",
             current = "➤",
