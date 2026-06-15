@@ -1,10 +1,10 @@
 # LVIM CONTROL CENTER
 
-[License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)(https://opensource.org/licenses/MIT)
-
 **`Lvim Control Center`** is an elegant and easy-to-configure settings management panel for Neovim. It provides a centralized user interface for quickly changing frequently used options, which are persisted across sessions.
 
-## ✨ Features
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](https://github.com/lvim-tech/lvim-control-center/blob/main/LICENSE)
+
+## Features
 
 - **Intuitive UI:** An easy-to-navigate panel with tabs (groups).
 - **Jump-to-anywhere:** Instantly open the panel to a specific tab or even a specific setting by name or by row number.
@@ -14,12 +14,12 @@
 - **Type Support:** Supports boolean (`bool`/`boolean`), integer (`int`/`integer`), float/number (`float`/`number`), text (`string`/`text`), and selection (`select`) options.
 - **Customization:** Easily change the appearance, such as window size, borders, dimensions, and colors.
 
-## 📋 Requirements
+## Requirements
 
 - Neovim >= 0.10.0
 - [kkharji/sqlite.lua](https://github.com/kkharji/sqlite.lua) - For settings persistence.
 
-## 💾 Installation
+## Installation
 
 ### LVIM IDE
 
@@ -70,7 +70,7 @@ use({
 })
 ```
 
-## 🚀 Usage
+## Usage
 
 ### Open the panel
 
@@ -120,7 +120,7 @@ A bare setting name (`:LvimControlCenter codelens`) jumps straight to it. Comman
 - `<BS>`: Cycle select settings backward.
 - `<Esc>`, `q`: Close the panel.
 
-## ⚙️ Configuration
+## Configuration
 
 The configuration is passed to the `setup()` function. The most important part is defining the `groups`.
 
@@ -266,7 +266,7 @@ set = function(value, is_load)
 end
 ```
 
-## 🎨 Customizing the Appearance
+## Customizing the Appearance
 
 The panel is rendered by [lvim-utils](https://github.com/lvim-tech/lvim-utils), so it is themed by the shared `LvimUi*` highlight groups. These self-theme from the lvim-utils palette and follow the active lvim-colorscheme automatically — normally you don't need to set anything, the panel matches the rest of the lvim-tech UI.
 
@@ -297,11 +297,11 @@ require("lvim-control-center").setup({
 
 See the [lvim-utils highlight groups](https://github.com/lvim-tech/lvim-utils#highlight-groups) for the full list.
 
-## 🏃 Tips
+## Tips
 
 - You can combine jump-to-tab and jump-to-setting in your mappings, autocommands, or even via Lua for quick profile scripts!
 - Both tab and setting selection are case-sensitive and work for both `name` and `label` (for tabs), and for setting `name` or row (number).
 
-## 📄 License
+## License
 
 This project is licensed under the BSD License. See the [LICENSE](LICENSE) file for more details.
