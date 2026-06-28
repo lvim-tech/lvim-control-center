@@ -195,6 +195,7 @@ M.open = function(tab_selector, id_or_row)
         -- The frame default borders TOP/RIGHT/LEFT only; add a BOTTOM edge (" ") so the menu rows get a
         -- closing border row below them (scoped to this panel — the global frame border is unchanged).
         border = { "", " ", "", " ", "", " ", "", " " },
+        footer_hints = true, -- live key-hint legend at the bottom (panel keys • focused-row keys)
         tabs = tabs,
         tab_selector = tab_selector,
         initial_row = id_or_row,
