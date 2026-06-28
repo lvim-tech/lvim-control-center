@@ -131,11 +131,23 @@ M.open = function(tab_selector, id_or_row)
         end
         -- Strip any trailing whitespace that may have been appended to the icon.
         local raw_icon = ((group.icon or ""):match("^(.-)%s*$"))
+        -- A group with NO value settings (only action / spacer rows — e.g. Commands, Projects) is a navigable
+        -- MENU: its rows must stay a selectable BODY list. Without this, ui.tabs collapses the childless action
+        -- rows into footer buttons and the tab body looks empty. A form group (bool/select/number values) stays
+        -- a form. `group.menu` overrides the auto-detect when set explicitly.
+        local has_value = false
+        for _, setting in ipairs(group.settings or {}) do
+            if setting.type ~= "action" and setting.type ~= "spacer" then
+                has_value = true
+                break
+            end
+        end
         table.insert(tabs, {
             icon = raw_icon ~= "" and raw_icon or nil,
             name = group.name,
             label = group.label or group.name,
             rows = rows,
+            menu = (group.menu ~= nil) and group.menu or not has_value,
         })
     end
 
@@ -179,6 +191,10 @@ M.open = function(tab_selector, id_or_row)
     ui.tabs({
         title = config.title,
         title_icon = "󰒓",
+        width = config.width, -- a fixed (constant) float width; nil → auto-fit to each tab's content
+        -- The frame default borders TOP/RIGHT/LEFT only; add a BOTTOM edge (" ") so the menu rows get a
+        -- closing border row below them (scoped to this panel — the global frame border is unchanged).
+        border = { "", " ", "", " ", "", " ", "", " " },
         tabs = tabs,
         tab_selector = tab_selector,
         initial_row = id_or_row,

@@ -32,6 +32,7 @@
 ---@field groups       LccGroup[]  Registered setting groups
 ---@field save         string      Directory used for the SQLite database
 ---@field title        string      Window title shown in the header
+---@field width        number      Fixed popup width — a fraction of the screen (≤ 1) or absolute columns (> 1)
 ---@field popup_global table       Passed verbatim to lvim-utils.ui.new()
 
 ---@type LccConfig
@@ -40,6 +41,9 @@ local M = {
     groups = {},
     save = "~/.local/share/nvim/lvim-control-center",
     title = "LVIM CONTROL CENTER",
+    -- Fixed popup width — a fraction of the screen (≤ 1, e.g. 0.7 = 70%) or absolute columns (> 1, e.g. 100).
+    -- Pins the panel to a CONSTANT width across every tab, instead of auto-fitting each tab to its content.
+    width = 0.7,
 
     -- ── lvim-utils ui instance config ────────────────────────────────────
     popup_global = {
