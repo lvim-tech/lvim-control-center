@@ -41,9 +41,9 @@ local M = {
     groups = {},
     save = "~/.local/share/nvim/lvim-control-center",
     title = "LVIM CONTROL CENTER",
-    -- Fixed popup width — a fraction of the screen (≤ 1, e.g. 0.7 = 70%) or absolute columns (> 1, e.g. 100).
+    -- Fixed popup width — a fraction of the screen (≤ 1, e.g. 0.9 = 90%) or absolute columns (> 1, e.g. 100).
     -- Pins the panel to a CONSTANT width across every tab, instead of auto-fitting each tab to its content.
-    width = 0.7,
+    width = 0.9,
 
     -- ── lvim-utils ui instance config ────────────────────────────────────
     popup_global = {
