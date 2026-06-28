@@ -146,10 +146,13 @@ end
 --- Settings with break_load = true are skipped — they are intentionally
 --- excluded from automatic restoration.
 function M.apply_saved_settings()
+    -- Read EVERY persisted value in a SINGLE query up front (was one `M.load` → one SQLite query PER setting:
+    -- ~71 queries ≈ the bulk of the startup cost). Each setting then resolves from this in-memory map.
+    local saved = M.export_all()
     for _, group in ipairs(config.groups or {}) do
         for _, setting in ipairs(group.settings or {}) do
             if not setting.break_load then
-                local value = M.load(setting.name)
+                local value = saved[setting.name]
                 if value == nil then
                     value = setting.default
                 end
