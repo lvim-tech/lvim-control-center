@@ -191,6 +191,7 @@ M.open = function(tab_selector, id_or_row)
     ui.tabs({
         title = config.title,
         title_icon = "󰒓",
+        title_pos = config.title_pos, -- centred by default (config/init.lua); "left" | "center" | "right"
         width = config.width, -- a fixed (constant) float width; nil → auto-fit to each tab's content
         footer_hints = true, -- live key-hint legend at the bottom (panel keys • focused-row keys)
         tabs = tabs,
