@@ -192,9 +192,6 @@ M.open = function(tab_selector, id_or_row)
         title = config.title,
         title_icon = "󰒓",
         width = config.width, -- a fixed (constant) float width; nil → auto-fit to each tab's content
-        -- The frame default borders TOP/RIGHT/LEFT only; add a BOTTOM edge (" ") so the menu rows get a
-        -- closing border row below them (scoped to this panel — the global frame border is unchanged).
-        border = { "", " ", "", " ", "", " ", "", " " },
         footer_hints = true, -- live key-hint legend at the bottom (panel keys • focused-row keys)
         tabs = tabs,
         tab_selector = tab_selector,

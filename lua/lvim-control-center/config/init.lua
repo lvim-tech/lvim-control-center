@@ -47,7 +47,6 @@ local M = {
 
     -- ── lvim-utils ui instance config ────────────────────────────────────
     popup_global = {
-        border = { "", "", "", " ", " ", " ", " ", " " },
         position = "editor",
         width = 0.8,
         max_width = 0.8,
