@@ -1,15 +1,21 @@
--- lua/lvim-control-center/ui/init.lua
--- Bridges the control-center config to a dedicated lvim-utils UI instance.
+-- lvim-control-center.ui: bridges the control-center config to a lvim-utils UI instance.
+-- Each group becomes a tab; each setting becomes a lvim-utils row (a group with only
+-- action/spacer rows renders as a navigable MENU, otherwise a FORM). Row values resolve
+-- get() → persisted DB value → default; edits persist immediately (setting.set or
+-- data.save) through on_change, gated by an optional per-setting validate(). The instance
+-- is created lazily on first open so setup() can deep-merge user overrides beforehand.
 --
--- The instance is created lazily on first open so that setup() can deep-merge
--- user overrides (including popup.highlights) before the instance is built.
+---@module "lvim-control-center.ui"
 
 local config = require("lvim-control-center.config")
 local data = require("lvim-control-center.persistence.data")
 
 -- Lazy UI instance — nil until the first open.
+---@type table|nil
 local _instance = nil
 
+--- Return the cached lvim-utils UI instance, building it on first call.
+---@return table|nil  The instance, or nil when lvim-utils.ui is unavailable
 local function get_ui()
     if _instance then
         return _instance
@@ -25,6 +31,7 @@ end
 local M = {}
 
 -- True while the control-center popup is visible; prevents duplicate opens.
+---@type boolean
 local _is_open = false
 
 -- ─── helpers ──────────────────────────────────────────────────────────────────
@@ -32,7 +39,7 @@ local _is_open = false
 --- Resolve the current live value for a setting.
 --- Priority: setting.get() → persisted DB value → setting.default.
 --- Action rows carry no value and always return nil.
----@param setting LccSetting
+---@param setting LvimControlCenterSetting
 ---@return any
 local function load_value(setting)
     if setting.type == "action" then
@@ -56,7 +63,7 @@ end
 --- Convert a LccSetting into the row format expected by lvim-utils tabs.
 --- For action rows the run callback is wrapped so it receives the buffer that
 --- was active before the popup was opened.
----@param setting     LccSetting
+---@param setting     LvimControlCenterSetting
 ---@param origin_bufnr integer  Buffer that was current when the popup was opened
 ---@return table  Row table compatible with lvim-utils UiRow
 local function setting_to_row(setting, origin_bufnr)
@@ -64,6 +71,10 @@ local function setting_to_row(setting, origin_bufnr)
         type = setting.type,
         name = setting.name,
         label = setting.label or setting.desc or setting.name,
+        -- Forward the setting's `desc` onto the row so lvim-utils receives it as the row's
+        -- description (used as the label fallback here, and surfaced by lvim-utils where a
+        -- description line is rendered) instead of it being dropped at the bridge.
+        desc = setting.desc,
         value = load_value(setting),
         default = setting.default,
         options = setting.options,
@@ -95,6 +106,7 @@ end
 ---@param tab_selector string|integer|nil  Tab to activate on open (name or 1-based index)
 ---@param id_or_row    string|integer|nil  Row to focus on open (name or 1-based index)
 ---@param layout       string|nil          "float" (default) | "area" | "bottom" — where the panel docks
+---@return nil
 M.open = function(tab_selector, id_or_row, layout)
     if _is_open then
         return

@@ -11,27 +11,28 @@
 - **Persistence:** Settings are automatically saved to an SQLite database and loaded on startup.
 - **Easy Configuration:** Define your own settings and groups using simple Lua tables.
 - **Extensibility:** Complete freedom to define complex `set` functions to manage any aspect of Neovim.
-- **Type Support:** Supports boolean (`bool`/`boolean`), integer (`int`/`integer`), float/number (`float`/`number`), text (`string`/`text`), and selection (`select`) options.
-- **Customization:** Easily change the appearance, such as window size, borders, dimensions, and colors.
+- **Type Support:** Supports boolean (`bool`/`boolean`), integer (`int`/`integer`), float/number (`float`/`number`), text (`string`/`text`) and selection (`select`) options, plus `action` rows (run a callback) and `spacer` rows (visual dividers).
+- **Customization:** Themed automatically from the shared lvim-utils palette; the panel size follows the shared lvim-utils geometry (edited via `:LvimUtils`), and highlights can be overridden per instance.
 
 ## Requirements
 
 - Neovim >= 0.10.0
+- [lvim-tech/lvim-utils](https://github.com/lvim-tech/lvim-utils) - The UI panel + config-merge layer.
 - [kkharji/sqlite.lua](https://github.com/kkharji/sqlite.lua) - For settings persistence.
 
 ## Installation
 
-### LVIM IDE
+Requires Neovim >= 0.10 and [lvim-utils](https://github.com/lvim-tech/lvim-utils) + [sqlite.lua](https://github.com/kkharji/sqlite.lua).
 
-Ships with LVIM IDE. Override its options in your user module
-(`lua/modules/user/init.lua`):
+### lvim-installer (recommended)
 
-```lua
-modules["lvim-tech/lvim-control-center"] = {
-    dependencies = { "lvim-tech/lvim-utils", "kkharji/sqlite.lua" },
-    opts = { ... },
-}
+Install and manage it from the LVIM package manager — open the **Plugins** tab and install / update / pin it:
+
+```vim
+:LvimInstaller plugins
 ```
+
+lvim-installer installs plugins through Neovim's built-in `vim.pack`, so no external plugin manager is needed.
 
 ### lazy.nvim
 
@@ -45,19 +46,6 @@ return {
 }
 ```
 
-### Native (vim.pack / packadd)
-
-```lua
--- In your init.lua, after the plugin is on the runtimepath:
-vim.pack.add({
-    { src = "https://github.com/lvim-tech/lvim-utils" },
-    { src = "https://github.com/kkharji/sqlite.lua" },
-    { src = "https://github.com/lvim-tech/lvim-control-center" },
-})
-
-require("lvim-control-center").setup({})
-```
-
 ### packer.nvim
 
 ```lua
@@ -65,9 +53,20 @@ use({
     "lvim-tech/lvim-control-center",
     requires = { "lvim-tech/lvim-utils", "kkharji/sqlite.lua" },
     config = function()
-        require("lvim-control-center").setup({ ... })
+        require("lvim-control-center").setup({})
     end,
 })
+```
+
+### Native (vim.pack)
+
+```lua
+vim.pack.add({
+    { src = "https://github.com/lvim-tech/lvim-utils" },
+    { src = "https://github.com/kkharji/sqlite.lua" },
+    { src = "https://github.com/lvim-tech/lvim-control-center" },
+})
+require("lvim-control-center").setup({})
 ```
 
 ## Usage
@@ -77,6 +76,17 @@ use({
 ```vim
 :LvimControlCenter
 ```
+
+By default the panel opens as a centred **float**. Pass a layout token to dock it elsewhere (order-independent with the tab / setting arguments):
+
+```vim
+:LvimControlCenter float             " centred float (default)
+:LvimControlCenter area              " docked in the msgarea / cmdline (editor + statusline stay above)
+:LvimControlCenter bottom            " docked as a bottom float
+:LvimControlCenter bottom appearance " a layout token can be combined with a tab / setting
+```
+
+The panel size follows the **shared lvim-utils geometry** (`config.ui.size.float`, edited via `:LvimUtils` or the "Utils" tab) — resize it there once and every lvim-utils panel, including this one, tracks it.
 
 ### Jump directly to a tab or setting!
 
@@ -116,8 +126,8 @@ A bare setting name (`:LvimControlCenter codelens`) jumps straight to it. Comman
 
 - `j` / `k`: Move up/down between settings.
 - `h` / `l`: Switch between tabs (groups).
-- `<CR>` (Enter): Change the selected setting.
-- `<BS>`: Cycle select settings backward.
+- `<CR>` (Enter): Toggle / cycle / edit / execute the focused setting.
+- `<Tab>` / `<BS>`: Cycle a `select` option forward / backward.
 - `<Esc>`, `q`: Close the panel.
 
 ## Configuration
@@ -132,29 +142,17 @@ This is the default configuration. You can override any of these fields in your 
 -- These are the defaults; pass any subset to override.
 require("lvim-control-center").setup({
     title = "LVIM CONTROL CENTER",
+    title_pos = "center", -- title alignment: "center" (default) | "left" | "right"
     save = "~/.local/share/nvim/lvim-control-center",
     groups = {}, -- you define these (see below)
 
-    -- Forwarded verbatim to require("lvim-utils.ui").new(): popup geometry, icons, keys,
-    -- labels and highlight overrides. See lvim-utils for the full list of options + defaults.
+    -- The panel SIZE is NOT set here — it follows the shared lvim-utils geometry
+    -- (config.ui.size.float, edited via :LvimUtils / the "Utils" tab), so the panel
+    -- resizes with those settings rather than a per-plugin width/height.
+    --
+    -- popup_global carries the instance defaults (icons, key labels, highlight overrides).
+    -- Override highlights here (see "Customizing the Appearance").
     popup_global = {
-        position = "editor",
-        width = 0.8,
-        max_width = 0.8,
-        height = "auto",
-        max_height = 0.8,
-        max_items = 15,
-        close_keys = { "q", "<Esc>" },
-        keys = {
-            down = "j",
-            up = "k",
-            confirm = "<CR>",
-            cancel = "<Esc>",
-            close = "q",
-            tabs = { next = "l", prev = "h" },
-        },
-        -- Empty by default — the panel uses the shared LvimUi* groups (self-themed from the
-        -- lvim-utils palette). Override them here (see "Customizing the Appearance").
         highlights = {},
     },
 })
@@ -219,11 +217,18 @@ local appearance = {
 
 require("lvim-control-center").setup({
     groups = { general, appearance },
-    popup_global = {
-        width = 0.6, -- override any popup_global option here
-    },
 })
 ```
+
+Each group table accepts:
+
+| Field      | Type      | Description                                                                                                             |
+| :--------- | :-------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `name`     | `string`  | **Required.** Unique group identifier (used by jump-to and completion).                                               |
+| `label`    | `string`  | Tab text (falls back to `name`).                                                                                       |
+| `icon`     | `string`  | Tab icon (trailing whitespace is stripped automatically).                                                             |
+| `settings` | `table[]` | The rows in this tab (see below).                                                                                     |
+| `menu`     | `boolean` | Force MENU vs FORM layout. When omitted it is auto-detected: a group whose rows are all `action`/`spacer` renders as a navigable menu; a group with value rows renders as a form. |
 
 ### Setting Definition
 
@@ -242,8 +247,9 @@ Each setting is a table with the following fields:
 | `run`     | `function(bufnr)`        | (For `type="action"`) Callback run when the row is activated; receives the buffer that was current when the panel opened.                                |
 | `break_load` | `boolean`             | (Optional) Skip applying this setting on startup.                                                                                                       |
 | `enabled` | `function(): boolean`    | (Optional) Hide the row when it returns `false` (evaluated on open) — for settings that don't apply in the current context.                             |
+| `disabled` | `boolean` \| `function(value): boolean` | (Optional) Render the row dimmed + struck through (its value is unchanged). Evaluated live at render time, so it can track a parent toggle. |
 | `validate` | `function(value): boolean` | (Optional) Reject a changed value when it returns `false`; it is neither applied nor persisted.                                                       |
-| `desc`    | `string`                 | (Optional) Shown live as a help line (the panel subtitle) for the focused setting.                                                                      |
+| `desc`    | `string`                 | (Optional) A short description of the setting, forwarded to the row. Used as the label fallback when no `label` is given.                                |
 
 #### The set function
 

@@ -1,6 +1,10 @@
--- lua/lvim-control-center/persistence/data.lua
--- High-level persistence API.
--- Translates between Lua values and the (type, text) pairs stored in SQLite.
+-- lvim-control-center.persistence.data: high-level persistence API over the SQLite layer.
+-- Translates between Lua values and the (type-tag, text) pairs stored in the DB (int / float
+-- / bool / string / json), and drives startup restore. apply_saved_settings() reads EVERY
+-- persisted value in ONE query (export_all) rather than one query per setting — that single
+-- change is what took startup restore from ~41ms down to ~1ms.
+--
+---@module "lvim-control-center.persistence.data"
 
 local db = require("lvim-control-center.persistence.db")
 local config = require("lvim-control-center.config")
@@ -9,11 +13,11 @@ local M = {}
 
 -- ─── encoding / decoding ──────────────────────────────────────────────────────
 
----@alias LccValueType "int"|"float"|"bool"|"string"|"json"
+---@alias LvimControlCenterValueType "int"|"float"|"bool"|"string"|"json"
 
 --- Encode a Lua value into a (type-tag, text) pair suitable for SQLite storage.
 ---@param value any
----@return LccValueType type_tag
+---@return LvimControlCenterValueType type_tag
 ---@return string       text_value
 local function encode_value(value)
     if type(value) == "number" then
@@ -39,7 +43,7 @@ end
 
 --- Decode a (type-tag, text) pair retrieved from SQLite back into a Lua value.
 ---@param val      string        Raw text value from the database
----@param val_type LccValueType  Type tag stored alongside the value
+---@param val_type LvimControlCenterValueType  Type tag stored alongside the value
 ---@return any  Decoded Lua value, or nil on failure
 local function decode_value(val, val_type)
     if val_type == "int" or val_type == "float" then
@@ -115,6 +119,7 @@ end
 
 --- Delete a setting's persisted value (so it reverts to its declared default).
 ---@param name string
+---@return boolean  true on success, false on error
 function M.clear(name)
     return db.remove({ name = name })
 end
@@ -145,6 +150,7 @@ end
 --- the saved value (or the declared default when nothing is persisted).
 --- Settings with break_load = true are skipped — they are intentionally
 --- excluded from automatic restoration.
+---@return nil
 function M.apply_saved_settings()
     -- Read EVERY persisted value in a SINGLE query up front (was one `M.load` → one SQLite query PER setting:
     -- ~71 queries ≈ the bulk of the startup cost). Each setting then resolves from this in-memory map.

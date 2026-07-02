@@ -1,6 +1,9 @@
--- lua/lvim-control-center/commands/init.lua
--- Registers Neovim user commands and applies settings that were persisted from
--- a previous session.
+-- lvim-control-center.commands: registers the :LvimControlCenter user command (open in a
+-- layout / jump to a tab or setting / export / import / reset) and, on init(), re-applies
+-- the settings persisted from a previous session. The command's completion doubles as a
+-- search across every group + setting name, so a bare name jumps straight to its group.
+--
+---@module "lvim-control-center.commands"
 
 local ui = require("lvim-control-center.ui")
 local data = require("lvim-control-center.persistence.data")
@@ -12,6 +15,7 @@ local DEFAULT_EXPORT = vim.fn.stdpath("data") .. "/lvim-control-center-export.js
 
 --- Export all persisted settings to a JSON file.
 ---@param path? string
+---@return nil
 local function export_settings(path)
     path = vim.fn.expand(path or DEFAULT_EXPORT)
     local map = data.export_all()
@@ -27,6 +31,7 @@ end
 
 --- Import persisted settings from a JSON file and re-apply them live.
 ---@param path? string
+---@return nil
 local function import_settings(path)
     path = vim.fn.expand(path or DEFAULT_EXPORT)
     if vim.fn.filereadable(path) == 0 then
@@ -59,6 +64,7 @@ end
 
 --- Register all user-facing commands and restore persisted setting values.
 --- Called once during plugin setup.
+---@return nil
 function M.init()
     -- :LvimControlCenter [float|area|bottom] [tab] [row]  open in a layout (default float), optionally focused
     -- :LvimControlCenter <setting>        open focused on a setting (group resolved for you)

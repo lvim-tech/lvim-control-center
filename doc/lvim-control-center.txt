@@ -29,6 +29,7 @@ Call `setup()` once; the table is deep-merged into the live config.
 >lua
   require("lvim-control-center").setup({
       title = "LVIM CONTROL CENTER",   -- header title
+      title_pos = "center",            -- title alignment: "center" | "left" | "right"
       save = "~/.local/share/nvim/lvim-control-center", -- SQLite dir
       groups = {                       -- see |lvim-control-center-groups|
           {
@@ -50,28 +51,32 @@ Call `setup()` once; the table is deep-merged into the live config.
       popup_global = { ... },           -- forwarded to lvim-utils.ui.new()
   })
 <
-`popup_global` is passed verbatim to `require("lvim-utils.ui").new()` — popup geometry,
-icons, keys, labels and highlight overrides (see |lvim-control-center-appearance|).
+The panel SIZE is NOT set here — it follows the SHARED lvim-utils geometry
+(`config.ui.size.float`, edited via `:LvimUtils` or the "Utils" tab), so the panel resizes
+with those settings. `popup_global` carries the instance defaults (icons, key labels and
+highlight overrides — see |lvim-control-center-appearance|).
 
 ==============================================================================
 3. GROUPS                                     *lvim-control-center-groups*
 
-Each group becomes one tab. *LccGroup*
+Each group becomes one tab. *LvimControlCenterGroup*
 
   name      string     unique group id
   label?    string     tab text (falls back to name)
   icon?     string     tab icon (trailing spaces stripped)
-  settings  LccSetting[]   the rows in this tab
+  settings  LvimControlCenterSetting[]   the rows in this tab
+  menu?     boolean    force MENU vs FORM layout; omit = auto (menu when the group has
+                       only action/spacer rows, form when it has value rows)
 
 ==============================================================================
 4. SETTINGS                                   *lvim-control-center-settings*
 
-Each setting is one row. *LccSetting*
+Each setting is one row. *LvimControlCenterSetting*
 
   name       string   unique id, used as the persistence key
   type       "bool" | "int" | "float" | "string" | "select" | "action" | "spacer"
   label?     string   display name (falls back to name)
-  desc?      string   alternative display name
+  desc?      string   short description; forwarded to the row, used as the label fallback
   default?   any      value applied when nothing is persisted
   get?       fun(): any                      read the current live value
   set?       fun(value, is_load, bufnr?)     apply a new value
@@ -81,10 +86,11 @@ Each setting is one row. *LccSetting*
   break_load? boolean skip applying this setting on startup
   enabled?   fun(): boolean              hide the row when it returns false (evaluated on
                                          open) — for settings that don't apply right now
+  disabled?  boolean | fun(value): boolean  render the row dimmed + struck through (value
+                                         unchanged); evaluated live so it can track a parent
+                                         toggle
   validate?  fun(value): boolean         reject a changed value when it returns false (it is
                                          neither applied nor persisted)
-
-`desc` is shown live as a help line (the panel subtitle) for the focused setting.
 
 Value resolution on open: `get()` → persisted DB value → `default`. On change the new
 value is applied via `set()` (or stored directly when there is no `set`), and persisted.
@@ -93,7 +99,11 @@ value is applied via `set()` (or stored directly when there is no `set`), and pe
 5. COMMAND                                    *lvim-control-center-command*
 
                                                       *:LvimControlCenter*
-:LvimControlCenter                  Open the panel.
+:LvimControlCenter                  Open the panel (centred float by default).
+:LvimControlCenter float|area|bottom   Open in a layout: `float` (centred, default), `area`
+                                    (msgarea/cmdline dock) or `bottom` (bottom float). The
+                                    layout token is order-independent with the tab/setting
+                                    args, e.g. `:LvimControlCenter bottom appearance`.
 :LvimControlCenter {tab}            Open focused on a tab (name or 1-based index).
 :LvimControlCenter {tab} {row}      Open focused on a specific setting (name or index).
 :LvimControlCenter {setting}        A bare setting name jumps straight to it (its group is

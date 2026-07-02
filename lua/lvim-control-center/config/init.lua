@@ -1,14 +1,19 @@
--- lua/lvim-control-center/config/init.lua
--- Default configuration for lvim-control-center.
+-- lvim-control-center.config: the live configuration table.
+-- Holds the defaults; setup() deep-merges user overrides into it IN PLACE, so every
+-- require("lvim-control-center.config") reader sees the effective values.
 --
--- Internal fields (groups, save, title) are consumed by the plugin itself.
--- popup_global is passed verbatim to require("lvim-utils.ui").new().
+-- The internal fields (groups, save, title, title_pos) are consumed by the plugin itself;
+-- popup_global is passed verbatim to require("lvim-utils.ui").new(). The panel's SIZE is NOT
+-- set here — it comes from the shared lvim-utils geometry (config.ui.size.float, edited via
+-- :LvimUtils / the "Utils" tab), so the panel tracks those settings.
+--
+---@module "lvim-control-center.config"
 
----@class LccSetting
+---@class LvimControlCenterSetting
 ---@field name       string                         Unique identifier used for persistence
 ---@field type       "bool"|"int"|"float"|"string"|"select"|"action"|"spacer"
 ---@field label?     string                         Display name (falls back to name)
----@field desc?      string                         Alternative display name
+---@field desc?      string                         Alternative display name (label fallback when no `label`)
 ---@field default?   any                            Default value applied when no saved value exists
 ---@field get?       fun(): any                     Read the current live value
 ---@field set?       fun(value: any, is_load: boolean, bufnr?: integer)  Apply a new value
@@ -22,20 +27,21 @@
 ---@field disabled?  boolean|fun(value: any): boolean  Render the row dimmed + struck through (value unchanged); evaluated live, so it can track a parent toggle
 ---@field validate?  fun(value: any): boolean       Reject a changed value when it returns false (not applied/persisted)
 
----@class LccGroup
+---@class LvimControlCenterGroup
 ---@field name      string        Unique group identifier
 ---@field label?    string        Display name shown on the tab (falls back to name)
 ---@field icon?     string        Tab icon (trailing whitespace is stripped automatically)
----@field settings  LccSetting[]
+---@field settings  LvimControlCenterSetting[]
+---@field menu?     boolean       Force MENU vs FORM layout; nil = auto (menu when the group has no value rows)
 
----@class LccConfig
----@field groups       LccGroup[]  Registered setting groups
+---@class LvimControlCenterConfig
+---@field groups       LvimControlCenterGroup[]  Registered setting groups
 ---@field save         string      Directory used for the SQLite database
 ---@field title        string      Window title shown in the header
----@field width        number      Fixed popup width — a fraction of the screen (≤ 1) or absolute columns (> 1)
+---@field title_pos    "center"|"left"|"right"  Title alignment in the panel's title row
 ---@field popup_global table       Passed verbatim to lvim-utils.ui.new()
 
----@type LccConfig
+---@type LvimControlCenterConfig
 local M = {
     -- ── internal ──────────────────────────────────────────────────────────
     groups = {},
@@ -43,9 +49,6 @@ local M = {
     title = "LVIM CONTROL CENTER",
     -- Title alignment in the panel's title row: "center" (default here) | "left" | "right".
     title_pos = "center",
-    -- Fixed popup width — a fraction of the screen (≤ 1, e.g. 0.9 = 90%) or absolute columns (> 1, e.g. 100).
-    -- Pins the panel to a CONSTANT width across every tab, instead of auto-fitting each tab to its content.
-    width = 0.9,
 
     -- ── lvim-utils ui instance config ────────────────────────────────────
     popup_global = {

@@ -1,7 +1,9 @@
--- lua/lvim-control-center/persistence/db.lua
--- Thin wrapper around sqlite.lua that manages a single "settings" table.
--- All public functions return false on error so callers can handle failures
--- without having to deal with raw pcall results.
+-- lvim-control-center.persistence.db: a thin wrapper around sqlite.lua managing one
+-- "settings" table (name TEXT unique → value TEXT, type TEXT). Every CRUD call is pcall-
+-- guarded and returns false on error (or when the DB is not yet initialised), so callers
+-- never see raw sqlite errors and the plugin degrades gracefully if sqlite.lua is missing.
+--
+---@module "lvim-control-center.persistence.db"
 
 local sqlite = require("sqlite.db")
 local tbl = require("sqlite.tbl")
@@ -133,6 +135,7 @@ end
 --- Close the database connection and reset the module state.
 --- Subsequent calls to find/insert/update/remove will return false until
 --- init() is called again.
+---@return nil
 function M.close_db_connection()
     if M.db then
         pcall(function()
