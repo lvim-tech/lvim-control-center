@@ -94,7 +94,8 @@ end
 --- Does nothing if the popup is already visible.
 ---@param tab_selector string|integer|nil  Tab to activate on open (name or 1-based index)
 ---@param id_or_row    string|integer|nil  Row to focus on open (name or 1-based index)
-M.open = function(tab_selector, id_or_row)
+---@param layout       string|nil          "float" (default) | "area" | "bottom" — where the panel docks
+M.open = function(tab_selector, id_or_row, layout)
     if _is_open then
         return
     end
@@ -192,7 +193,9 @@ M.open = function(tab_selector, id_or_row)
         title = config.title,
         title_icon = "󰒓",
         title_pos = config.title_pos, -- centred by default (config/init.lua); "left" | "center" | "right"
-        width = config.width, -- a fixed (constant) float width; nil → auto-fit to each tab's content
+        layout = layout, -- "float" (default) | "area" (msgarea dock) | "bottom" — from the :LvimControlCenter subcommand
+        -- No explicit width/height: the size comes from the SHARED lvim-utils geometry (config.ui.size.float,
+        -- edited via :LvimUtils / the control-center's Utils tab), so the panel resizes with those settings.
         footer_hints = true, -- live key-hint legend at the bottom (panel keys • focused-row keys)
         tabs = tabs,
         tab_selector = tab_selector,

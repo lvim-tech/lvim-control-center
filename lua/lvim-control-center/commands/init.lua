@@ -60,12 +60,23 @@ end
 --- Register all user-facing commands and restore persisted setting values.
 --- Called once during plugin setup.
 function M.init()
-    -- :LvimControlCenter [tab] [row]      open (optionally focused on a tab / setting)
+    -- :LvimControlCenter [float|area|bottom] [tab] [row]  open in a layout (default float), optionally focused
     -- :LvimControlCenter <setting>        open focused on a setting (group resolved for you)
     -- :LvimControlCenter export [path]    export persisted settings to JSON
     -- :LvimControlCenter import [path]    import persisted settings from JSON
     vim.api.nvim_create_user_command("LvimControlCenter", function(opts)
-        local a1, a2 = opts.fargs[1], opts.fargs[2]
+        -- Pull an optional LAYOUT token (float / area / bottom — order-independent) out of the args; it picks
+        -- where the panel docks. The remaining args are the export/import/reset verb or the tab / setting / row.
+        local LAYOUTS = { float = true, area = true, bottom = true }
+        local layout, rest = nil, {}
+        for _, a in ipairs(opts.fargs) do
+            if LAYOUTS[a] and not layout then
+                layout = a
+            else
+                rest[#rest + 1] = a
+            end
+        end
+        local a1, a2 = rest[1], rest[2]
         if a1 == "export" then
             export_settings(a2)
         elseif a1 == "import" then
@@ -83,22 +94,22 @@ function M.init()
             -- a single arg may be a group OR a setting name — resolve a bare setting to its group.
             local g, s = group_of_setting(a1)
             if g then
-                ui.open(g, s)
+                ui.open(g, s, layout)
             else
-                ui.open(a1, nil)
+                ui.open(a1, nil, layout)
             end
         else
-            ui.open(a1, a2)
+            ui.open(a1, a2, layout)
         end
     end, {
-        desc = "Open LVIM Control Center (or export/import settings)",
+        desc = "Open LVIM Control Center ([float|area|bottom] layout; or export/import settings)",
         nargs = "*",
         complete = function(arglead, cmdline)
             local words = vim.split(vim.trim(cmdline), "%s+")
             local cands = {}
             if #words <= 2 then
                 -- first arg: special verbs + group names + every setting name (search/discovery)
-                cands = { "export", "import", "reset" }
+                cands = { "export", "import", "reset", "float", "area", "bottom" }
                 for _, group in ipairs(config.groups or {}) do
                     cands[#cands + 1] = group.name
                     for _, setting in ipairs(group.settings or {}) do
