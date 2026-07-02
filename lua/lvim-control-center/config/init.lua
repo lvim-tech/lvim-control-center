@@ -53,10 +53,9 @@ local M = {
     -- ── lvim-utils ui instance config ────────────────────────────────────
     popup_global = {
         position = "editor",
-        width = 0.8,
-        max_width = 0.8,
-        height = "auto",
-        max_height = 0.8,
+        -- SIZE is intentionally omitted: it comes from the shared lvim-utils geometry (config.ui.size.float,
+        -- edited via :LvimUtils / the "Utils" tab). ui.new() now applies the rest of this table as per-open
+        -- defaults, so setting width/height here would override that shared geometry — leave it out.
         max_items = 15,
         filetype = "lvim-utils-ui",
         close_keys = { "q", "<Esc>" },
