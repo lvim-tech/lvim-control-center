@@ -15,12 +15,12 @@ local data = require("lvim-control-center.persistence.data")
 local _instance = nil
 
 --- Return the cached lvim-utils UI instance, building it on first call.
----@return table|nil  The instance, or nil when lvim-utils.ui is unavailable
+---@return table|nil  The instance, or nil when lvim-ui is unavailable
 local function get_ui()
     if _instance then
         return _instance
     end
-    local ok, mod = pcall(require, "lvim-utils.ui")
+    local ok, mod = pcall(require, "lvim-ui")
     if not ok then
         return nil
     end

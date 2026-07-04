@@ -2,7 +2,7 @@
 -- deep-merge user overrides into the live config, initialise the SQLite database, register
 -- the :LvimControlCenter user command, and re-apply the settings persisted from a prior
 -- session. The UI is built lazily on first open (see lvim-control-center.ui), so setup()
--- stays cheap and does not require lvim-utils.ui to be present at startup.
+-- stays cheap and does not require lvim-ui to be present at startup.
 --
 ---@module "lvim-control-center"
 

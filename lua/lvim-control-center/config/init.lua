@@ -3,7 +3,7 @@
 -- require("lvim-control-center.config") reader sees the effective values.
 --
 -- The internal fields (groups, save, title, title_pos) are consumed by the plugin itself;
--- popup_global is passed verbatim to require("lvim-utils.ui").new(). The panel's SIZE is NOT
+-- popup_global is passed verbatim to require("lvim-ui").new(). The panel's SIZE is NOT
 -- set here — it comes from the shared lvim-utils geometry (config.ui.size.float, edited via
 -- :LvimUtils / the "Utils" tab), so the panel tracks those settings.
 --
@@ -39,7 +39,7 @@
 ---@field save         string      Directory used for the SQLite database
 ---@field title        string      Window title shown in the header
 ---@field title_pos    "center"|"left"|"right"  Title alignment in the panel's title row
----@field popup_global table       Passed verbatim to lvim-utils.ui.new()
+---@field popup_global table       Passed verbatim to lvim-ui.new()
 
 ---@type LvimControlCenterConfig
 local M = {

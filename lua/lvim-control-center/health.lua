@@ -33,7 +33,7 @@ function M.check()
 
     -- lvim-utils — mandatory: provides the UI panel and the deep-merge used by setup().
     local ok_utils = pcall(require, "lvim-utils.utils")
-    local ok_ui = pcall(require, "lvim-utils.ui")
+    local ok_ui = pcall(require, "lvim-ui")
     if ok_utils and ok_ui then
         health.ok("lvim-utils found (UI panel + config merge)")
     else
