@@ -30,6 +30,13 @@ function M.setup(opts)
 
     -- Register the :LvimControlCenter user command and apply persisted settings.
     commands.init()
+
+    -- Runtime UI-geometry settings (the shared lvim-ui.config.size / .backdrop): restore the persisted values
+    -- from the store (this control center's sqlite when present, else a JSON file) and register the standalone
+    -- `:LvimUtils` geometry panel. Absorbed from lvim-utils in the split — control-center owns the config-panel
+    -- plumbing now (it already depends on lvim-ui + lvim-utils.store, so no dependency cycle).
+    require("lvim-control-center.settings").restore()
+    require("lvim-control-center.config_ui").setup()
 end
 
 return M
