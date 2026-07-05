@@ -43,6 +43,8 @@ profiles `:preset_save/load/list/delete(name)`. Registry helpers on the module: 
       title_icon = "󰒓",               -- Nerd Font glyph before the title
       title_pos = "center",            -- title alignment: "center" | "left" | "right"
       save = "~/.local/share/nvim/lvim-control-center", -- SQLite dir (else derived from command)
+      register_command = true,         -- false → no `:<command>`; host opens via :open()
+      subcommands = {},                -- extra host subcommands: { ["name"] = fun(...) end }
       on_change = nil,                 -- fun(name, value, instance): hook after any panel edit
       groups = {                       -- see |lvim-control-center-groups|
           {

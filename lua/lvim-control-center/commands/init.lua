@@ -48,6 +48,13 @@ function M.register(instance)
             end
         end
         local a1, a2 = rest[1], rest[2]
+        -- Host subcommands (e.g. quick toggles) take priority over the built-in verbs, so a plugin can
+        -- extend THIS command instead of registering a second one. Remaining args are forwarded.
+        local subs = instance.config.subcommands or {}
+        if a1 and type(subs[a1]) == "function" then
+            subs[a1](unpack(rest, 2))
+            return
+        end
         if a1 == "export" then
             instance:export(a2)
         elseif a1 == "import" then
@@ -114,8 +121,11 @@ function M.register(instance)
                     cands = instance:preset_list()
                 end
             elseif #words <= 2 then
-                -- first arg: special verbs + group names + every setting name (search/discovery)
+                -- first arg: special verbs + host subcommands + group names + every setting name (search/discovery)
                 cands = { "search", "export", "import", "reset", "preset", "float", "area", "bottom" }
+                for name in pairs(instance.config.subcommands or {}) do
+                    cands[#cands + 1] = name
+                end
                 for _, group in ipairs(instance.config.groups or {}) do
                     cands[#cands + 1] = group.name
                     for _, setting in ipairs(group.settings or {}) do

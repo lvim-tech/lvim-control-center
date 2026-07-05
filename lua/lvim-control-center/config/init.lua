@@ -44,7 +44,9 @@
 ---@field menu?     boolean       Force MENU vs FORM layout; nil = auto (menu when the group has no value rows)
 
 ---@class LvimControlCenterConfig
----@field command      string      REQUIRED — the unique user command that opens this instance (e.g. "LvimControlCenter")
+---@field command      string      REQUIRED — the unique key + user command that opens this instance (e.g. "LvimControlCenter")
+---@field register_command? boolean  Register the `:<command>` user command (default true). false → the instance exists (keyed by `command`, opened via `:open()`) but no command is created — for a host that drives the panel from its OWN command
+---@field subcommands? table<string, fun(...)>  Extra host subcommands on the instance's command — `:<command> <name> [args]` calls the matching function (checked BEFORE the built-in verbs). Lets a host add e.g. quick toggles without a second command
 ---@field groups       LvimControlCenterGroup[]  Registered setting groups
 ---@field save         string      Directory used for the SQLite database (derived from `command` when nil)
 ---@field title        string      Window title shown in the header
@@ -61,6 +63,10 @@ function M.defaults()
     return {
         -- ── internal ──────────────────────────────────────────────────────────
         command = nil, -- REQUIRED per instance; validated in instance.new()
+        -- Register the `:<command>` user command. false → no command (host opens via :open()).
+        register_command = true,
+        -- Extra host subcommands on the command (name → fn), checked before the built-in verbs.
+        subcommands = {},
         groups = {},
         -- nil → instance.new() derives stdpath("data")/lvim-control-center/<command>.
         save = nil,

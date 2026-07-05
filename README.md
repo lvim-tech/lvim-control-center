@@ -144,6 +144,14 @@ require("lvim-control-center").new({
     save = "~/.local/share/nvim/lvim-control-center",
     groups = {}, -- you define these (see below)
 
+    -- Register the `:<command>` user command (default true). false → no command is created; a host
+    -- that drives the panel from its OWN command opens it via cc.get(command):open().
+    register_command = true,
+
+    -- Extra host subcommands on this command (name → fn), checked BEFORE the built-in verbs. Lets a
+    -- host plugin add e.g. quick toggles to `:<command> <name>` instead of registering a 2nd command.
+    subcommands = {}, -- { ["toggle-x"] = function() ... end }
+
     -- Optional central hook: called after ANY value edited in the panel is applied.
     -- One place for telemetry / reload / side effects — signature (name, value, instance).
     on_change = nil, -- function(name, value, instance) end

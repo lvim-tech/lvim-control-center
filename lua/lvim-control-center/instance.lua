@@ -82,7 +82,12 @@ function M.new(opts)
     self._is_open = false
     self._ui = nil
 
-    commands.register(self)
+    -- Register the instance's own `:<command>` user command — UNLESS the host opts out
+    -- (`register_command = false`), e.g. when it drives the panel from its OWN command and does not
+    -- want a second, redundant one. The instance is still keyed by `command` in the registry either way.
+    if self.config.register_command ~= false then
+        commands.register(self)
+    end
     -- Register the cross-instance :LvimControlCenterList command once (idempotent), backed by the registry.
     commands.ensure_global(M._instances)
     self:apply_saved_settings()
