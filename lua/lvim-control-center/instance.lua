@@ -14,6 +14,7 @@
 local uconfig = require("lvim-control-center.config")
 local db = require("lvim-control-center.persistence.db")
 local data = require("lvim-control-center.persistence.data")
+local file = require("lvim-control-center.persistence.file")
 local commands = require("lvim-control-center.commands")
 local ui = require("lvim-control-center.ui")
 local merge = require("lvim-utils.utils").merge
@@ -95,10 +96,20 @@ end
 local PRESET_PREFIX = "__cc_preset__"
 
 --- The context handed to every setting get/set: this instance's persistence + the origin buffer.
+--- `data` is the DEFAULT store (the instance's database); `file(path)` returns a JSON-file store
+--- with the SAME interface, for the exceptions that persist to a file instead (e.g. a project-local
+--- override) — see persistence/file.lua.
 ---@param bufnr? integer
 ---@return LvimControlCenterCtx
 function Instance:ctx(bufnr)
-    return { data = self.data, bufnr = bufnr, instance = self }
+    return {
+        data = self.data,
+        file = function(path)
+            return file.bind(path)
+        end,
+        bufnr = bufnr,
+        instance = self,
+    }
 end
 
 --- Open this instance's panel. Delegates to the shared UI bridge.

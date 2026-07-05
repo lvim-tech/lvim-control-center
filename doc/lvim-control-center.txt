@@ -93,6 +93,8 @@ Each setting is one row. *LvimControlCenterSetting*
   default?   any      value applied when nothing is persisted
   get?       fun(ctx): any                   read the current live value
   set?       fun(value, is_load, ctx)        apply a new value; persist via ctx.data:save()
+                                              (database, default) or ctx.file(path):save()
+                                              (a JSON file — for a project-local override etc.)
   run?       fun(bufnr)                       callback for `action` rows
   options?   any[]    choices for `select` rows
   icon?      string   per-row icon
@@ -161,6 +163,11 @@ Each instance stores its values in its OWN SQLite database (`lvim-control-center
 its `save` directory — so instances never share a store. On `new()` the saved values are
 re-applied (each setting's `set(value, true, ctx)`), unless the setting sets
 `break_load = true`. Requires sqlite.lua.
+
+The database (`ctx.data`) is the DEFAULT. A setting may instead persist to a JSON FILE via
+`ctx.file(path)` — the same interface (`:save` / `:load` / `:export_all` / `:import_all` /
+`:clear`) backed by a plain file — for the exceptions that belong in a file rather than the
+global DB, e.g. a project-local, git-committable override (`.<plugin>.json` in the cwd).
 
 ==============================================================================
 8. APPEARANCE                               *lvim-control-center-appearance*

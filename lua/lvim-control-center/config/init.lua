@@ -31,7 +31,8 @@
 ---@field validate?  fun(value: any): boolean       Reject a changed value when it returns false (not applied/persisted)
 
 ---@class LvimControlCenterCtx  Injected into every setting get/set — the instance's context.
----@field data     LvimControlCenterData  Persistence bound to THIS instance's database
+---@field data     LvimControlCenterData  DEFAULT persistence — this instance's database
+---@field file     fun(path: string): LvimControlCenterFile  A JSON-FILE store (same interface as `data`) for exceptions that persist to a file instead of the database (e.g. a project-local override)
 ---@field bufnr?   integer                The buffer active when the panel was opened (nil at startup restore)
 ---@field instance table                  The owning instance
 

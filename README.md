@@ -303,15 +303,32 @@ Each setting is a table with the following fields:
 
 1. `value` — the new value.
 2. `is_load` — `true` while a persisted value is being applied on startup, `false` on a user change. Use it to skip side effects (notifications, file writes) during restore.
-3. `ctx` — the owning instance's context: `ctx.data` (persistence bound to THIS instance's database), `ctx.bufnr` (the buffer current when the panel opened), and `ctx.instance` (the instance itself). Because persistence comes from `ctx`, a group is instance-agnostic — the same group works in any instance and saves to that instance's store.
+3. `ctx` — the owning instance's context:
+   - `ctx.data` — the DEFAULT store, bound to THIS instance's database.
+   - `ctx.file(path)` — a JSON-**file** store with the SAME interface (`:save` / `:load` / `:export_all` / `:import_all` / `:clear`), for the exceptions that belong in a file instead of the database — e.g. a **project-local, git-committable override**.
+   - `ctx.bufnr` — the buffer current when the panel opened.
+   - `ctx.instance` — the instance itself.
 
-If the value is derived from live editor state (e.g. `vim.o.*`), `get`/`set` are enough — no manual persistence is needed. To persist a value across sessions, save it through `ctx.data`:
+   Because persistence comes from `ctx`, a group is instance-agnostic — the same group works in any instance and saves to that instance's store.
+
+If the value is derived from live editor state (e.g. `vim.o.*`), `get`/`set` are enough — no manual persistence is needed. To persist a value across sessions, save it through `ctx.data` (database, the default):
 
 ```lua
 set = function(value, is_load, ctx)
     vim.o.relativenumber = value
     if not is_load and ctx and ctx.data then
         ctx.data:save("relativenumber", value)
+    end
+end
+```
+
+To persist a specific value to a **file** instead (e.g. a project-local override, kept per directory and committable to git), use `ctx.file(path)` — same interface as `ctx.data`:
+
+```lua
+set = function(value, is_load, ctx)
+    apply_live(value)
+    if not is_load and ctx then
+        ctx.file(vim.fn.getcwd() .. "/.myplugin.json"):save("option", value)
     end
 end
 ```
