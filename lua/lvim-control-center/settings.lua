@@ -20,11 +20,13 @@ local M = {}
 -- when auto is on).
 local SIZE_OPTIONS = { "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "1.0" }
 
--- Backdrop winblend choices (integers, ASCENDING) in STEPS of 5: 0 = fully opaque veil (strongest darken),
--- 100 = invisible. <CR> raises the value (more see-through / softer dim).
-local BLEND_OPTIONS = {}
-for i = 0, 20 do
-    BLEND_OPTIONS[i + 1] = tostring(i * 5)
+-- Backdrop MODE per layout: "darken" (fg+bg toward black, a uniform darker look) / "dim" (fg muted, lighter) —
+-- both via a shared highlight namespace, so a terminal image under a surface stays visible. `amount` is the
+-- mute fraction.
+local BACKDROP_MODE_OPTIONS = { "darken", "dim" }
+local BACKDROP_AMOUNT_OPTIONS = {}
+for i = 1, 9 do
+    BACKDROP_AMOUNT_OPTIONS[i] = tostring(i / 10)
 end
 
 --- Option string → the numeric fraction the config holds ("0.8" → 0.8). Booleans (the `auto` rows) round-trip
@@ -70,6 +72,7 @@ end
 ---@field type    string     "select" (a size fraction / blend) | "bool" (a toggle)
 ---@field options? string[]  choices (select only)
 ---@field default any        fallback config value when nothing is persisted
+---@field disabled? boolean|fun(): boolean  render the row dimmed + struck through (value unchanged); evaluated LIVE
 
 -- Auto (fit vs fixed) is PER AXIS. Only `float` has a width, so only it gets a `width_auto` toggle — `area`
 -- and `bottom` are full-width docks with a height only. Each `*_auto` boolean precedes its fraction so a layout
@@ -186,66 +189,79 @@ M.specs = {
         type = "bool",
         default = true,
     },
-    -- Backdrop dim/darken veil PER LAYOUT (`config.ui.backdrop`) — a toggle + a winblend for each. The `hl` colour
-    -- stays config-only (a highlight-group name isn't a panel choice).
-    {
-        name = "ui_backdrop_float_enabled",
-        path = { "float", "enabled" },
-        root = "backdrop",
-        group = "Backdrop",
-        label = "Float backdrop",
-        type = "bool",
-        default = true,
-    },
-    {
-        name = "ui_backdrop_float_blend",
-        path = { "float", "blend" },
-        root = "backdrop",
-        group = "Backdrop",
-        label = "Float backdrop blend",
-        type = "select",
-        options = BLEND_OPTIONS,
-        default = 65,
-    },
-    {
-        name = "ui_backdrop_area_enabled",
-        path = { "area", "enabled" },
-        root = "backdrop",
-        group = "Backdrop",
-        label = "Area backdrop",
-        type = "bool",
-        default = true,
-    },
-    {
-        name = "ui_backdrop_area_blend",
-        path = { "area", "blend" },
-        root = "backdrop",
-        group = "Backdrop",
-        label = "Area backdrop blend",
-        type = "select",
-        options = BLEND_OPTIONS,
-        default = 65,
-    },
-    {
-        name = "ui_backdrop_bottom_enabled",
-        path = { "bottom", "enabled" },
-        root = "backdrop",
-        group = "Backdrop",
-        label = "Bottom backdrop",
-        type = "bool",
-        default = true,
-    },
-    {
-        name = "ui_backdrop_bottom_blend",
-        path = { "bottom", "blend" },
-        root = "backdrop",
-        group = "Backdrop",
-        label = "Bottom backdrop blend",
-        type = "select",
-        options = BLEND_OPTIONS,
-        default = 65,
-    },
 }
+
+-- Backdrop specs PER LAYOUT (float / area / bottom), appended to M.specs below. Each layout gets an `enabled`
+-- toggle, a `mode` selector (darken / dim), and BOTH modes' `amount` — where an amount row is DISABLED (dimmed +
+-- struck through, inert) unless ITS mode is the live one. So dim and darken are tuned independently and only the
+-- active mode's amount is editable; flipping `mode` swaps which amount lights up (re-rendered live on change).
+---@param layout string
+---@return LvimUtilsSpec[]
+local function backdrop_specs(layout)
+    local cap = layout:sub(1, 1):upper() .. layout:sub(2)
+    local function bd()
+        return require("lvim-ui.config").backdrop[layout] or {}
+    end
+    -- The whole layout is OFF when its `enabled` toggle is false → every row below it is inert.
+    local function is_off()
+        return bd().enabled == false
+    end
+    ---@type LvimUtilsSpec[]
+    return {
+        {
+            name = "ui_backdrop_" .. layout .. "_enabled",
+            path = { layout, "enabled" },
+            root = "backdrop",
+            group = "Backdrop",
+            label = cap .. " backdrop",
+            type = "bool",
+            default = true,
+        },
+        {
+            name = "ui_backdrop_" .. layout .. "_mode",
+            path = { layout, "mode" },
+            root = "backdrop",
+            group = "Backdrop",
+            label = cap .. " mode",
+            type = "select",
+            options = BACKDROP_MODE_OPTIONS,
+            default = "darken",
+            disabled = is_off, -- no mode to pick while the backdrop is disabled
+        },
+        {
+            name = "ui_backdrop_" .. layout .. "_dim_amount",
+            path = { layout, "dim", "amount" },
+            root = "backdrop",
+            group = "Backdrop",
+            label = cap .. " dim amount",
+            type = "select",
+            options = BACKDROP_AMOUNT_OPTIONS,
+            default = 0.4,
+            -- inert while the backdrop is off, OR while "dim" is not the live mode
+            disabled = function()
+                return is_off() or bd().mode ~= "dim"
+            end,
+        },
+        {
+            name = "ui_backdrop_" .. layout .. "_darken_amount",
+            path = { layout, "darken", "amount" },
+            root = "backdrop",
+            group = "Backdrop",
+            label = cap .. " darken amount",
+            type = "select",
+            options = BACKDROP_AMOUNT_OPTIONS,
+            default = 0.5,
+            disabled = function()
+                return is_off() or bd().mode ~= "darken"
+            end,
+        },
+    }
+end
+for _, l in ipairs({ "float", "area", "bottom" }) do
+    for _, s in ipairs(backdrop_specs(l)) do
+        M.specs[#M.specs + 1] = s
+    end
+end
 
 --- The live `config.ui[root]` table (created if missing) — a spec's `root` ("size" default, or "backdrop").
 ---@param root? string
@@ -341,6 +357,9 @@ function M.lcc_group()
             type = spec.type,
             label = spec.label,
             options = spec.options,
+            -- Forward the live `disabled` predicate so a mode's amount row greys out (dimmed + struck through)
+            -- while the OTHER mode is active — the control-center form evaluates it at render time.
+            disabled = spec.disabled,
             -- The default the control-center applies when NOTHING is persisted MUST be the LIVE config value (which
             -- `M.get` reads from `config.ui[root]`), NOT a hardcoded `spec.default`: config.lua is the source of
             -- truth, so a user editing e.g. `config.ui.backdrop.float.blend` must win. A stale literal here would

@@ -52,6 +52,9 @@ function M.open()
                     label = spec.label,
                     value = settings.get(spec),
                     options = spec.options,
+                    -- A spec inert in the current context (e.g. a mode's amount while the OTHER mode is live) is
+                    -- rendered dimmed + struck through and non-editable; evaluated live, so it tracks the mode row.
+                    disabled = spec.disabled,
                 }
             end
         end
