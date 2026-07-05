@@ -98,12 +98,23 @@ The panel size follows the **shared lvim-ui geometry** (`config.ui.size.float`) 
 ### Manage settings
 
 ```vim
-:LvimControlCenter export [path]    " export persisted settings to JSON
-:LvimControlCenter import [path]    " import settings from JSON and re-apply
-:LvimControlCenter reset [setting]  " reset one setting (or all) to its default
+:LvimControlCenter search                  " fuzzy-search every setting across all tabs, jump to the choice
+:LvimControlCenter export [path]           " export persisted settings to JSON
+:LvimControlCenter import [path]           " import settings from JSON and re-apply
+:LvimControlCenter reset [setting]         " reset one setting (or all) to its default
+:LvimControlCenter preset save <name>      " snapshot the current settings as a named profile
+:LvimControlCenter preset load <name>      " apply a saved profile
+:LvimControlCenter preset list             " list saved profiles
+:LvimControlCenter preset delete <name>    " delete a profile
 ```
 
-A bare setting name (`:LvimControlCenter codelens`) jumps straight to it. Command-line completion offers the verbs, every group and every setting name — a quick search across the whole config.
+A bare setting name (`:LvimControlCenter codelens`) jumps straight to it. Command-line completion offers the verbs, every group and every setting name — a quick search across the whole config. Presets are stored inside the instance's own database.
+
+### List / open instances
+
+```vim
+:LvimControlCenterList   " pick a live instance to open (cross-instance registry)
+```
 
 ### Navigation
 
@@ -133,6 +144,10 @@ require("lvim-control-center").new({
     save = "~/.local/share/nvim/lvim-control-center",
     groups = {}, -- you define these (see below)
 
+    -- Optional central hook: called after ANY value edited in the panel is applied.
+    -- One place for telemetry / reload / side effects — signature (name, value, instance).
+    on_change = nil, -- function(name, value, instance) end
+
     -- The panel SIZE is NOT set here — it follows the shared lvim-ui geometry
     -- (config.ui.size.float), so the panel resizes with that shared geometry
     -- rather than a per-plugin width/height.
@@ -145,7 +160,25 @@ require("lvim-control-center").new({
 })
 ```
 
-`new(opts)` returns the instance, whose methods are `:open(tab?, row?, layout?)`, `:reset(name?)`, `:export(path?)`, `:import(path?)` and `:close()`. Look an instance up later with `require("lvim-control-center").get("<command>")`.
+`new(opts)` returns the instance. Its methods:
+
+| Method | Description |
+| :----- | :---------- |
+| `:open(tab?, row?, layout?)` | Open the panel (optionally focused / docked). |
+| `:search()` | Fuzzy-search every setting across all tabs; the choice opens the panel focused on it. |
+| `:reset(name?)` | Reset one setting (or all) to its default. |
+| `:export(path?)` / `:import(path?)` | Export / import this instance's settings as JSON. |
+| `:preset_save(name)` / `:preset_load(name)` / `:preset_list()` / `:preset_delete(name)` | Named profiles, stored in this instance's own database. |
+| `:close()` | Drop the command, close the database, remove from the registry. |
+
+Module-level (registry) helpers on `require("lvim-control-center")`:
+
+| Function | Description |
+| :------- | :---------- |
+| `get(command)` | Look up a live instance by its command. |
+| `list()` | List every live instance (command, save, group/setting counts, open-state). |
+| `close_all()` | Close every instance. |
+| `export_all(path?)` / `import_all(path?)` | Whole-profile snapshot across **all** instances, keyed by command, in one JSON file. |
 
 ### Multiple instances
 

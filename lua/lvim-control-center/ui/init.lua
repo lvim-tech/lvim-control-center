@@ -192,6 +192,10 @@ function M.open(instance, tab_selector, id_or_row, layout)
         else
             ctx.data:save(row.name, row.value)
         end
+        -- Central per-instance hook: one place to react to any applied edit (telemetry, reload, …).
+        if instance.config.on_change then
+            pcall(instance.config.on_change, row.name, row.value, instance)
+        end
     end
 
     instance._is_open = true

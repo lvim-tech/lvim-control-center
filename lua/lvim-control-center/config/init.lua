@@ -49,6 +49,7 @@
 ---@field title        string      Window title shown in the header
 ---@field title_icon   string      Nerd Font glyph shown before the title
 ---@field title_pos    "center"|"left"|"right"  Title alignment in the panel's title row
+---@field on_change?   fun(name: string, value: any, instance: LvimControlCenterInstance)  Called after any value edited in the panel is applied — one central hook for telemetry / reload / side effects
 ---@field popup_global table       Passed verbatim to lvim-ui.new()
 
 local M = {}
@@ -62,6 +63,8 @@ function M.defaults()
         groups = {},
         -- nil → instance.new() derives stdpath("data")/lvim-control-center/<command>.
         save = nil,
+        -- Optional central hook: fun(name, value, instance) after any panel edit is applied.
+        on_change = nil,
         title = "LVIM CONTROL CENTER",
         -- Nerd Font glyph rendered before the title (cog). Override via new({ title_icon = "…" }).
         title_icon = "󰒓",

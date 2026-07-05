@@ -32,6 +32,10 @@ requires a UNIQUE `command` and owns its own database. `new()` returns the insta
 
 `setup(opts)` is a thin loader-facing forwarder over `new()`: pass a SINGLE instance table
 or a LIST of them (`{ {command=…}, {command=…} }`). No command / empty table → quiet no-op.
+
+Instance methods: `:open()` `:search()` `:reset()` `:export()` `:import()` `:close()` and the
+profiles `:preset_save/load/list/delete(name)`. Registry helpers on the module: `get(command)`,
+`list()`, `close_all()`, and whole-profile `export_all(path)` / `import_all(path)`.
 >lua
   require("lvim-control-center").new({
       command = "LvimControlCenter",   -- REQUIRED, unique — the command that opens it
@@ -39,6 +43,7 @@ or a LIST of them (`{ {command=…}, {command=…} }`). No command / empty table
       title_icon = "󰒓",               -- Nerd Font glyph before the title
       title_pos = "center",            -- title alignment: "center" | "left" | "right"
       save = "~/.local/share/nvim/lvim-control-center", -- SQLite dir (else derived from command)
+      on_change = nil,                 -- fun(name, value, instance): hook after any panel edit
       groups = {                       -- see |lvim-control-center-groups|
           {
               name = "editor",
@@ -120,11 +125,20 @@ the example name; each instance registers its own.
 :LvimControlCenter {tab} {row}      Open focused on a specific setting (name or index).
 :LvimControlCenter {setting}        A bare setting name jumps straight to it (its group is
                                     resolved for you).
+:LvimControlCenter search           Fuzzy-search every setting across all tabs (via
+                                    |vim.ui.select|); the choice opens the panel focused there.
 :LvimControlCenter export [path]    Export persisted settings to a JSON file (default:
                                     stdpath("data")/lvim-control-center-<command>-export.json).
 :LvimControlCenter import [path]    Import settings from a JSON file and re-apply them.
 :LvimControlCenter reset [setting]  Reset one setting (or all when omitted) to its default
                                     and clear the persisted value.
+:LvimControlCenter preset save {name}    Snapshot the current settings as a named profile.
+:LvimControlCenter preset load {name}    Apply a saved profile.
+:LvimControlCenter preset list           List saved profiles.
+:LvimControlCenter preset delete {name}  Delete a profile. Profiles live in the instance's DB.
+
+                                                  *:LvimControlCenterList*
+:LvimControlCenterList              Pick a live instance to open (cross-instance registry).
 
 Command-line completion offers the verbs, every group, and every setting name — so it
 doubles as a quick search across the whole config.

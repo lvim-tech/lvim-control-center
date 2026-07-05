@@ -82,11 +82,17 @@ function M.new(opts)
     self._ui = nil
 
     commands.register(self)
+    -- Register the cross-instance :LvimControlCenterList command once (idempotent), backed by the registry.
+    commands.ensure_global(M._instances)
     self:apply_saved_settings()
 
     M._instances[self.config.command] = self
     return self
 end
+
+--- Prefix marking a stored PRESET snapshot inside the instance's own database (kept in the same
+--- table as settings, but excluded from the settings map / export by this prefix).
+local PRESET_PREFIX = "__cc_preset__"
 
 --- The context handed to every setting get/set: this instance's persistence + the origin buffer.
 ---@param bufnr? integer
@@ -147,6 +153,19 @@ function Instance:reset(name)
     return n
 end
 
+--- This instance's persisted SETTINGS map (its store minus the preset snapshots, which live in
+--- the same table under `PRESET_PREFIX`). Used by export and by preset_save.
+---@return table<string, any>
+function Instance:settings_map()
+    local out = {}
+    for k, v in pairs(self.data:export_all()) do
+        if k:sub(1, #PRESET_PREFIX) ~= PRESET_PREFIX then
+            out[k] = v
+        end
+    end
+    return out
+end
+
 --- The default export path for this instance (namespaced by command so instances don't collide).
 ---@return string
 function Instance:default_export_path()
@@ -157,8 +176,10 @@ end
 ---@param path? string
 ---@return nil
 function Instance:export(path)
-    path = vim.fn.expand(path or self:default_export_path())
-    local map = self.data:export_all()
+    -- vim.fs.normalize (not vim.fn.expand): a not-yet-existing export target must survive, and
+    -- expand() globs it away to "".
+    path = vim.fs.normalize(path or self:default_export_path())
+    local map = self:settings_map()
     local ok = pcall(vim.fn.writefile, { vim.fn.json_encode(map) }, path)
     if ok then
         vim.notify(("Exported %d settings → %s"):format(vim.tbl_count(map), path), vim.log.levels.INFO, {
@@ -173,7 +194,7 @@ end
 ---@param path? string
 ---@return nil
 function Instance:import(path)
-    path = vim.fn.expand(path or self:default_export_path())
+    path = vim.fs.normalize(path or self:default_export_path())
     if vim.fn.filereadable(path) == 0 then
         vim.notify("No such file: " .. path, vim.log.levels.ERROR, { title = "Control Center" })
         return
@@ -186,6 +207,86 @@ function Instance:import(path)
     local n = self.data:import_all(map)
     self:apply_saved_settings()
     vim.notify(("Imported %d settings"):format(n), vim.log.levels.INFO, { title = "Control Center" })
+end
+
+--- Fuzzy-search EVERY setting across all this instance's tabs through the canonical lvim-ui
+--- picker (centered + themed). Choosing one opens the panel focused on that setting's row.
+---@return nil
+function Instance:search()
+    local items = {}
+    for _, group in ipairs(self.config.groups or {}) do
+        for _, setting in ipairs(group.settings or {}) do
+            if setting.type ~= "spacer" then
+                items[#items + 1] = {
+                    group = group.name,
+                    name = setting.name,
+                    -- "Group ➤ Setting" — ➤ (U+27A4) is the canonical lvim-tech sequence separator.
+                    label = (group.label or group.name) .. " ➤ " .. (setting.label or setting.desc or setting.name),
+                }
+            end
+        end
+    end
+    if #items == 0 then
+        vim.notify("No settings to search.", vim.log.levels.INFO, { title = "Control Center" })
+        return
+    end
+    local ok, lui = pcall(require, "lvim-ui")
+    if not ok then
+        return
+    end
+    lui.select({
+        title = "Search settings",
+        items = items,
+        callback = function(confirmed, index)
+            local it = confirmed and items[index]
+            if it then
+                self:open(it.group, it.name)
+            end
+        end,
+    })
+end
+
+--- Save the current settings as a named PRESET (a profile) inside this instance's own database.
+---@param name string
+---@return boolean  true on success
+function Instance:preset_save(name)
+    if type(name) ~= "string" or name == "" then
+        return false
+    end
+    return self.data:save(PRESET_PREFIX .. name, self:settings_map()) ~= false
+end
+
+--- Load a named preset: apply its stored settings live and persist them as the current values.
+---@param name string
+---@return boolean  true when the preset existed and was applied
+function Instance:preset_load(name)
+    local map = self.data:load(PRESET_PREFIX .. name)
+    if type(map) ~= "table" then
+        return false
+    end
+    self.data:import_all(map)
+    self:apply_saved_settings()
+    return true
+end
+
+--- Delete a named preset.
+---@param name string
+---@return boolean
+function Instance:preset_delete(name)
+    return self.data:clear(PRESET_PREFIX .. name)
+end
+
+--- List the names of all saved presets, sorted.
+---@return string[]
+function Instance:preset_list()
+    local names = {}
+    for k in pairs(self.data:export_all()) do
+        if k:sub(1, #PRESET_PREFIX) == PRESET_PREFIX then
+            names[#names + 1] = k:sub(#PRESET_PREFIX + 1)
+        end
+    end
+    table.sort(names)
+    return names
 end
 
 --- Close this instance: drop its command, close its database, and remove it from the registry.
