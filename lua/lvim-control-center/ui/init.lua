@@ -1,58 +1,49 @@
--- lvim-control-center.ui: bridges the control-center config to a lvim-utils UI instance.
--- Each group becomes a tab; each setting becomes a lvim-utils row (a group with only
--- action/spacer rows renders as a navigable MENU, otherwise a FORM). Row values resolve
--- get() → persisted DB value → default; edits persist immediately (setting.set or
--- data.save) through on_change, gated by an optional per-setting validate(). The instance
--- is created lazily on first open so setup() can deep-merge user overrides beforehand.
+-- lvim-control-center.ui: bridges ONE instance's config to a lvim-utils UI instance. Each
+-- group becomes a tab; each setting becomes a lvim-utils row (a group with only action/spacer
+-- rows renders as a navigable MENU, otherwise a FORM). Row values resolve get(ctx) → the
+-- instance's persisted value → default; edits persist immediately (setting.set(…, ctx) or
+-- ctx.data:save) through on_change, gated by an optional per-setting validate(). The lvim-ui
+-- instance is cached on the control-center instance so it is built once, lazily, on first open.
 --
 ---@module "lvim-control-center.ui"
 
-local config = require("lvim-control-center.config")
-local data = require("lvim-control-center.persistence.data")
+local M = {}
 
--- Lazy UI instance — nil until the first open.
----@type table|nil
-local _instance = nil
-
---- Return the cached lvim-utils UI instance, building it on first call.
----@return table|nil  The instance, or nil when lvim-ui is unavailable
-local function get_ui()
-    if _instance then
-        return _instance
+--- Return the instance's cached lvim-ui instance, building it on first call.
+---@param instance LvimControlCenterInstance
+---@return table|nil  The lvim-ui instance, or nil when lvim-ui is unavailable
+local function get_ui(instance)
+    if instance._ui then
+        return instance._ui
     end
     local ok, mod = pcall(require, "lvim-ui")
     if not ok then
         return nil
     end
-    _instance = mod.new(config.popup_global)
-    return _instance
+    instance._ui = mod.new(instance.config.popup_global)
+    return instance._ui
 end
-
-local M = {}
-
--- True while the control-center popup is visible; prevents duplicate opens.
----@type boolean
-local _is_open = false
 
 -- ─── helpers ──────────────────────────────────────────────────────────────────
 
 --- Resolve the current live value for a setting.
---- Priority: setting.get() → persisted DB value → setting.default.
+--- Priority: setting.get(ctx) → the instance's persisted value → setting.default.
 --- Action rows carry no value and always return nil.
 ---@param setting LvimControlCenterSetting
+---@param ctx     LvimControlCenterCtx
 ---@return any
-local function load_value(setting)
+local function load_value(setting, ctx)
     if setting.type == "action" then
         return nil
     end
     local value
     if setting.get then
         pcall(function()
-            value = setting.get()
+            value = setting.get(ctx)
         end)
     end
     if value == nil then
-        value = data.load(setting.name)
+        value = ctx.data:load(setting.name)
     end
     if value == nil then
         value = setting.default
@@ -65,8 +56,9 @@ end
 --- was active before the popup was opened.
 ---@param setting     LvimControlCenterSetting
 ---@param origin_bufnr integer  Buffer that was current when the popup was opened
+---@param ctx         LvimControlCenterCtx
 ---@return table  Row table compatible with lvim-utils UiRow
-local function setting_to_row(setting, origin_bufnr)
+local function setting_to_row(setting, origin_bufnr, ctx)
     local row = {
         type = setting.type,
         name = setting.name,
@@ -75,7 +67,7 @@ local function setting_to_row(setting, origin_bufnr)
         -- description (used as the label fallback here, and surfaced by lvim-utils where a
         -- description line is rendered) instead of it being dropped at the bridge.
         desc = setting.desc,
-        value = load_value(setting),
+        value = load_value(setting, ctx),
         default = setting.default,
         options = setting.options,
         top = setting.top,
@@ -101,29 +93,31 @@ end
 
 -- ─── public API ───────────────────────────────────────────────────────────────
 
---- Open the control-center popup.
---- Does nothing if the popup is already visible.
+--- Open an instance's control-center popup. Does nothing if it is already visible.
+---@param instance     LvimControlCenterInstance
 ---@param tab_selector string|integer|nil  Tab to activate on open (name or 1-based index)
 ---@param id_or_row    string|integer|nil  Row to focus on open (name or 1-based index)
 ---@param layout       string|nil          "float" (default) | "area" | "bottom" — where the panel docks
 ---@return nil
-M.open = function(tab_selector, id_or_row, layout)
-    if _is_open then
+function M.open(instance, tab_selector, id_or_row, layout)
+    if instance._is_open then
         return
     end
 
+    local config = instance.config
     if not config.groups or #config.groups == 0 then
         vim.notify("No settings groups found!", vim.log.levels.ERROR)
         return
     end
 
-    local ui = get_ui()
+    local ui = get_ui(instance)
     if not ui then
         return
     end
 
-    -- Remember the calling buffer so action callbacks can reference it.
+    -- Remember the calling buffer so action callbacks and set(ctx) can reference it.
     local origin_bufnr = vim.api.nvim_get_current_buf()
+    local ctx = instance:ctx(origin_bufnr)
 
     -- Build one tab per group, converting each setting into a lvim-utils row.
     ---@type table[]
@@ -139,7 +133,7 @@ M.open = function(tab_selector, id_or_row, layout)
                 hidden = ok and not on
             end
             if not hidden then
-                table.insert(rows, setting_to_row(setting, origin_bufnr))
+                table.insert(rows, setting_to_row(setting, origin_bufnr, ctx))
             end
         end
         -- Strip any trailing whitespace that may have been appended to the icon.
@@ -194,27 +188,27 @@ M.open = function(tab_selector, id_or_row, layout)
             end
         end
         if setting.set then
-            pcall(setting.set, row.value, false, origin_bufnr)
+            pcall(setting.set, row.value, false, ctx)
         else
-            data.save(row.name, row.value)
+            ctx.data:save(row.name, row.value)
         end
     end
 
-    _is_open = true
+    instance._is_open = true
     ui.tabs({
         title = config.title,
-        title_icon = "󰒓",
+        title_icon = config.title_icon, -- cog by default (config/init.lua); override via new({ title_icon })
         title_pos = config.title_pos, -- centred by default (config/init.lua); "left" | "center" | "right"
-        layout = layout, -- "float" (default) | "area" (msgarea dock) | "bottom" — from the :LvimControlCenter subcommand
-        -- No explicit width/height: the size comes from the SHARED lvim-utils geometry (config.ui.size.float,
-        -- edited via :LvimUtils / the control-center's Utils tab), so the panel resizes with those settings.
+        layout = layout, -- "float" (default) | "area" (msgarea dock) | "bottom" — from the command subcommand
+        -- No explicit width/height: the size comes from the SHARED lvim-ui geometry (config.ui.size.float),
+        -- so the panel resizes with that shared geometry.
         footer_hints = true, -- live key-hint legend at the bottom (panel keys • focused-row keys)
         tabs = tabs,
         tab_selector = tab_selector,
         initial_row = id_or_row,
         on_change = on_change,
         callback = function()
-            _is_open = false
+            instance._is_open = false
         end,
     })
 end

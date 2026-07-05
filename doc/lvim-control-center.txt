@@ -25,12 +25,20 @@ Requires: |lvim-utils| (UI + persistence helpers) and sqlite.lua.
 ==============================================================================
 2. SETUP                                      *lvim-control-center-setup*
 
-Call `setup()` once; the table is deep-merged into the live config.
+Multi-instance: there is NO global singleton. Create an instance with `new(opts)` — it
+requires a UNIQUE `command` and owns its own database. `new()` returns the instance
+(methods `:open()` `:reset()` `:export()` `:import()` `:close()`); look it up later with
+`require("lvim-control-center").get("<command>")`.
+
+`setup(opts)` is a thin loader-facing forwarder over `new()`: pass a SINGLE instance table
+or a LIST of them (`{ {command=…}, {command=…} }`). No command / empty table → quiet no-op.
 >lua
-  require("lvim-control-center").setup({
+  require("lvim-control-center").new({
+      command = "LvimControlCenter",   -- REQUIRED, unique — the command that opens it
       title = "LVIM CONTROL CENTER",   -- header title
+      title_icon = "󰒓",               -- Nerd Font glyph before the title
       title_pos = "center",            -- title alignment: "center" | "left" | "right"
-      save = "~/.local/share/nvim/lvim-control-center", -- SQLite dir
+      save = "~/.local/share/nvim/lvim-control-center", -- SQLite dir (else derived from command)
       groups = {                       -- see |lvim-control-center-groups|
           {
               name = "editor",
@@ -48,13 +56,13 @@ Call `setup()` once; the table is deep-merged into the live config.
               },
           },
       },
-      popup_global = { ... },           -- forwarded to lvim-utils.ui.new()
+      popup_global = { ... },           -- forwarded to lvim-ui.new()
   })
 <
-The panel SIZE is NOT set here — it follows the SHARED lvim-utils geometry
-(`config.ui.size.float`, edited via `:LvimUtils` or the "Utils" tab), so the panel resizes
-with those settings. `popup_global` carries the instance defaults (icons, key labels and
-highlight overrides — see |lvim-control-center-appearance|).
+The panel SIZE is NOT set here — it follows the SHARED lvim-ui geometry
+(`config.ui.size.float`), so the panel resizes with that shared geometry. `popup_global`
+carries the instance defaults (icons, key labels and highlight overrides — see
+|lvim-control-center-appearance|).
 
 ==============================================================================
 3. GROUPS                                     *lvim-control-center-groups*
@@ -78,8 +86,8 @@ Each setting is one row. *LvimControlCenterSetting*
   label?     string   display name (falls back to name)
   desc?      string   short description; forwarded to the row, used as the label fallback
   default?   any      value applied when nothing is persisted
-  get?       fun(): any                      read the current live value
-  set?       fun(value, is_load, bufnr?)     apply a new value
+  get?       fun(ctx): any                   read the current live value
+  set?       fun(value, is_load, ctx)        apply a new value; persist via ctx.data:save()
   run?       fun(bufnr)                       callback for `action` rows
   options?   any[]    choices for `select` rows
   icon?      string   per-row icon
@@ -92,11 +100,15 @@ Each setting is one row. *LvimControlCenterSetting*
   validate?  fun(value): boolean         reject a changed value when it returns false (it is
                                          neither applied nor persisted)
 
-Value resolution on open: `get()` → persisted DB value → `default`. On change the new
-value is applied via `set()` (or stored directly when there is no `set`), and persisted.
+Value resolution on open: `get(ctx)` → the instance's persisted value → `default`. On
+change the new value is applied via `set()` (or stored directly when there is no `set`),
+and persisted to the owning instance's database.
 
 ==============================================================================
 5. COMMAND                                    *lvim-control-center-command*
+
+The command name is the instance's `command` field — `:LvimControlCenter` below is just
+the example name; each instance registers its own.
 
                                                       *:LvimControlCenter*
 :LvimControlCenter                  Open the panel (centred float by default).
@@ -109,7 +121,7 @@ value is applied via `set()` (or stored directly when there is no `set`), and pe
 :LvimControlCenter {setting}        A bare setting name jumps straight to it (its group is
                                     resolved for you).
 :LvimControlCenter export [path]    Export persisted settings to a JSON file (default:
-                                    stdpath("data")/lvim-control-center-export.json).
+                                    stdpath("data")/lvim-control-center-<command>-export.json).
 :LvimControlCenter import [path]    Import settings from a JSON file and re-apply them.
 :LvimControlCenter reset [setting]  Reset one setting (or all when omitted) to its default
                                     and clear the persisted value.
@@ -131,9 +143,10 @@ doubles as a quick search across the whole config.
 ==============================================================================
 7. PERSISTENCE                             *lvim-control-center-persistence*
 
-Values are stored in a SQLite database (`lvim-control-center.db`) under `save`. On
-`setup()` the saved values are re-applied (each setting's `set(value, true)`), unless the
-setting sets `break_load = true`. Requires sqlite.lua.
+Each instance stores its values in its OWN SQLite database (`lvim-control-center.db`) under
+its `save` directory — so instances never share a store. On `new()` the saved values are
+re-applied (each setting's `set(value, true, ctx)`), unless the setting sets
+`break_load = true`. Requires sqlite.lua.
 
 ==============================================================================
 8. APPEARANCE                               *lvim-control-center-appearance*
@@ -142,7 +155,8 @@ The panel is a |lvim-utils| UI instance, themed by the shared `LvimUi*` groups w
 self-theme from the lvim-utils palette and follow the active lvim-colorscheme. To override,
 pass highlight overrides through `popup_global.highlights`:
 >lua
-  require("lvim-control-center").setup({
+  require("lvim-control-center").new({
+      command = "LvimControlCenter",
       popup_global = {
           highlights = {
               LvimUiTitle = { fg = "#89b4fa", bold = true },

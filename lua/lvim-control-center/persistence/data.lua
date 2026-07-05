@@ -1,15 +1,18 @@
--- lvim-control-center.persistence.data: high-level persistence API over the SQLite layer.
--- Translates between Lua values and the (type-tag, text) pairs stored in the DB (int / float
--- / bool / string / json), and drives startup restore. apply_saved_settings() reads EVERY
--- persisted value in ONE query (export_all) rather than one query per setting — that single
--- change is what took startup restore from ~41ms down to ~1ms.
+-- lvim-control-center.persistence.data: high-level persistence API BOUND to one database
+-- handle. `M.bind(handle)` returns a small object (save / load / export_all / import_all /
+-- clear) that reads and writes THAT instance's store — it is exactly the `ctx.data` handed
+-- to every setting's get/set, so a group persists to whichever instance it is registered in
+-- (it never reaches for a global module). Translates between Lua values and the (type-tag,
+-- text) pairs stored in SQLite (int / float / bool / string / json).
 --
 ---@module "lvim-control-center.persistence.data"
 
-local db = require("lvim-control-center.persistence.db")
-local config = require("lvim-control-center.config")
-
 local M = {}
+
+---@class LvimControlCenterData  Persistence bound to one instance's database handle.
+---@field db LvimControlCenterDb
+local Data = {}
+Data.__index = Data
 
 -- ─── encoding / decoding ──────────────────────────────────────────────────────
 
@@ -61,39 +64,48 @@ local function decode_value(val, val_type)
     end
 end
 
+-- ─── construction ─────────────────────────────────────────────────────────────
+
+--- Bind a persistence API to a database handle. The returned object is the `ctx.data`
+--- passed to setting get/set callbacks.
+---@param handle LvimControlCenterDb
+---@return LvimControlCenterData
+function M.bind(handle)
+    return setmetatable({ db = handle }, Data)
+end
+
 -- ─── public API ───────────────────────────────────────────────────────────────
 
---- Persist a setting value.
---- Inserts a new row if the setting has never been saved; updates it otherwise.
+--- Persist a setting value into this instance's store (insert or update).
 ---@param param string  Setting name (primary key in the DB)
 ---@param value any     Value to store
 ---@return integer|boolean  Row ID on insert, true on update, false on error
-function M.save(param, value)
+function Data:save(param, value)
     local val_type, db_value = encode_value(value)
-    local existing = db.find({ name = param })
+    local existing = self.db:find({ name = param })
     if existing and existing[1] then
-        return db.update({ name = param }, { value = db_value, type = val_type })
+        return self.db:update({ name = param }, { value = db_value, type = val_type })
     else
-        return db.insert({ name = param, value = db_value, type = val_type })
+        return self.db:insert({ name = param, value = db_value, type = val_type })
     end
 end
 
---- Load a persisted setting value.
+--- Load a persisted setting value from this instance's store.
 ---@param param string  Setting name to look up
 ---@return any  The decoded value, or nil if nothing has been saved yet
-function M.load(param)
-    local found = db.find({ name = param })
+function Data:load(param)
+    local found = self.db:find({ name = param })
     if found and found[1] then
         return decode_value(found[1].value, found[1].type)
     end
     return nil
 end
 
---- Export every persisted setting as a `name → value` map.
+--- Export every persisted setting in this instance's store as a `name → value` map.
 ---@return table<string, any>
-function M.export_all()
+function Data:export_all()
     local out = {}
-    local rows = db.find()
+    local rows = self.db:find()
     if type(rows) == "table" then
         for _, r in ipairs(rows) do
             if r.name then
@@ -107,10 +119,10 @@ end
 --- Import a `name → value` map, persisting each entry. Returns the count written.
 ---@param map table<string, any>
 ---@return integer
-function M.import_all(map)
+function Data:import_all(map)
     local n = 0
     for name, value in pairs(map or {}) do
-        if M.save(name, value) ~= false then
+        if self:save(name, value) ~= false then
             n = n + 1
         end
     end
@@ -120,54 +132,8 @@ end
 --- Delete a setting's persisted value (so it reverts to its declared default).
 ---@param name string
 ---@return boolean  true on success, false on error
-function M.clear(name)
-    return db.remove({ name = name })
-end
-
---- Reset one setting (or all when `name` is nil) to its declared default: clears the
---- persisted value and re-applies the default via `set(default, true)`. Returns the count.
----@param name? string
----@return integer
-function M.reset(name)
-    local n = 0
-    for _, group in ipairs(config.groups or {}) do
-        for _, setting in ipairs(group.settings or {}) do
-            local is_value = setting.type ~= "action" and setting.type ~= "spacer"
-            if is_value and (name == nil or setting.name == name) then
-                M.clear(setting.name)
-                if setting.default ~= nil and setting.set then
-                    pcall(setting.set, setting.default, true)
-                end
-                n = n + 1
-            end
-        end
-    end
-    return n
-end
-
---- Apply every persisted setting at startup.
---- Iterates all registered groups and calls each setting's set() callback with
---- the saved value (or the declared default when nothing is persisted).
---- Settings with break_load = true are skipped — they are intentionally
---- excluded from automatic restoration.
----@return nil
-function M.apply_saved_settings()
-    -- Read EVERY persisted value in a SINGLE query up front (was one `M.load` → one SQLite query PER setting:
-    -- ~71 queries ≈ the bulk of the startup cost). Each setting then resolves from this in-memory map.
-    local saved = M.export_all()
-    for _, group in ipairs(config.groups or {}) do
-        for _, setting in ipairs(group.settings or {}) do
-            if not setting.break_load then
-                local value = saved[setting.name]
-                if value == nil then
-                    value = setting.default
-                end
-                if value ~= nil and setting.set then
-                    setting.set(value, true)
-                end
-            end
-        end
-    end
+function Data:clear(name)
+    return self.db:remove({ name = name })
 end
 
 return M

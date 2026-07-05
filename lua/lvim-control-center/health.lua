@@ -1,12 +1,11 @@
 -- lvim-control-center.health: :checkhealth lvim-control-center — probes the hard
--- dependencies (Neovim version, sqlite.lua for persistence, lvim-utils for the UI +
--- deep-merge), reports whether the SQLite database is open, and summarises the registered
--- groups / settings so a mis-declared config surfaces at a glance.
+-- dependencies (Neovim version, sqlite.lua for persistence, lvim-utils/lvim-ui for the UI +
+-- deep-merge) and then reports EVERY live instance: its command, its database state, and its
+-- registered groups / settings, so a mis-declared config surfaces at a glance.
 --
 ---@module "lvim-control-center.health"
 
-local config = require("lvim-control-center.config")
-local db = require("lvim-control-center.persistence.db")
+local instance = require("lvim-control-center.instance")
 
 local M = {}
 
@@ -31,35 +30,36 @@ function M.check()
         health.error("sqlite.lua not found — settings cannot be persisted (install kkharji/sqlite.lua)")
     end
 
-    -- lvim-utils — mandatory: provides the UI panel and the deep-merge used by setup().
+    -- lvim-utils / lvim-ui — mandatory: provide the UI panel and the deep-merge used by new().
     local ok_utils = pcall(require, "lvim-utils.utils")
     local ok_ui = pcall(require, "lvim-ui")
     if ok_utils and ok_ui then
-        health.ok("lvim-utils found (UI panel + config merge)")
+        health.ok("lvim-utils + lvim-ui found (UI panel + config merge)")
     else
-        health.error("lvim-utils not found — the panel cannot render and setup() cannot merge config")
+        health.error("lvim-utils / lvim-ui not found — the panel cannot render and new() cannot merge config")
     end
 
-    -- Database connection state (init() runs during setup()).
-    if db.db and db.settings then
-        health.ok("SQLite database initialised")
-    else
-        health.warn("SQLite database not initialised — was setup() called (and is sqlite.lua present)?")
+    -- Per-instance summary. No instance yet is fine (nothing has called new()).
+    local n = 0
+    for command, inst in pairs(instance._instances) do
+        n = n + 1
+        local groups = inst.config.groups or {}
+        local n_settings = 0
+        for _, group in ipairs(groups) do
+            n_settings = n_settings + #(group.settings or {})
+        end
+        health.start(("instance :%s"):format(command))
+        if inst.db and inst.db:is_open() then
+            health.ok("database open: " .. tostring(inst.config.save))
+        else
+            health.warn("database NOT open: " .. tostring(inst.config.save))
+        end
+        health.info(("%d group(s), %d setting(s) registered"):format(#groups, n_settings))
+        health.info(("title_pos: %s"):format(tostring(inst.config.title_pos)))
     end
-
-    -- Config summary: total groups + settings so a mis-declared config is visible.
-    local groups = config.groups or {}
-    local n_settings = 0
-    for _, group in ipairs(groups) do
-        n_settings = n_settings + #(group.settings or {})
+    if n == 0 then
+        health.info("no instances created yet — call require('lvim-control-center').new({ command = … })")
     end
-    if #groups > 0 then
-        health.ok(("%d group(s), %d setting(s) registered"):format(#groups, n_settings))
-    else
-        health.info("no groups registered yet — declare groups in setup({ groups = { … } })")
-    end
-
-    health.info(("save dir: %s  title_pos: %s"):format(tostring(config.save), tostring(config.title_pos)))
 end
 
 return M

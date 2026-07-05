@@ -11,8 +11,9 @@
 - **Persistence:** Settings are automatically saved to an SQLite database and loaded on startup.
 - **Easy Configuration:** Define your own settings and groups using simple Lua tables.
 - **Extensibility:** Complete freedom to define complex `set` functions to manage any aspect of Neovim.
+- **Multi-instance:** Spawn as many independent panels as you like — each with its own command, its own set of groups, and its **own SQLite database**. There is no global singleton (see [Multiple instances](#multiple-instances)).
 - **Type Support:** Supports boolean (`bool`/`boolean`), integer (`int`/`integer`), float/number (`float`/`number`), text (`string`/`text`) and selection (`select`) options, plus `action` rows (run a callback) and `spacer` rows (visual dividers).
-- **Customization:** Themed automatically from the shared lvim-utils palette; the panel size follows the shared lvim-utils geometry (edited via `:LvimUtils`), and highlights can be overridden per instance.
+- **Customization:** Themed automatically from the shared lvim-utils palette; the panel size follows the shared lvim-ui geometry (`config.ui.size.float`), and highlights can be overridden per instance.
 
 ## Requirements
 
@@ -34,30 +35,6 @@ Install and manage it from the LVIM package manager — open the **Plugins** tab
 
 lvim-installer installs plugins through Neovim's built-in `vim.pack`, so no external plugin manager is needed.
 
-### lazy.nvim
-
-```lua
-return {
-    "lvim-tech/lvim-control-center",
-    dependencies = { "lvim-tech/lvim-utils", "kkharji/sqlite.lua" },
-    config = function()
-        require("lvim-control-center").setup({})
-    end,
-}
-```
-
-### packer.nvim
-
-```lua
-use({
-    "lvim-tech/lvim-control-center",
-    requires = { "lvim-tech/lvim-utils", "kkharji/sqlite.lua" },
-    config = function()
-        require("lvim-control-center").setup({})
-    end,
-})
-```
-
 ### Native (vim.pack)
 
 ```lua
@@ -66,7 +43,12 @@ vim.pack.add({
     { src = "https://github.com/kkharji/sqlite.lua" },
     { src = "https://github.com/lvim-tech/lvim-control-center" },
 })
-require("lvim-control-center").setup({})
+
+-- Instance-based: create an instance with a UNIQUE command (see Configuration).
+require("lvim-control-center").new({
+    command = "LvimControlCenter",
+    groups = {}, -- you define these (see below)
+})
 ```
 
 ## Usage
@@ -86,7 +68,7 @@ By default the panel opens as a centred **float**. Pass a layout token to dock i
 :LvimControlCenter bottom appearance " a layout token can be combined with a tab / setting
 ```
 
-The panel size follows the **shared lvim-utils geometry** (`config.ui.size.float`, edited via `:LvimUtils` or the "Utils" tab) — resize it there once and every lvim-utils panel, including this one, tracks it.
+The panel size follows the **shared lvim-ui geometry** (`config.ui.size.float`) — the same geometry every lvim-ui surface reads, so resizing it once (from your own config, or a settings group you register that writes `config.ui.size`) resizes this panel too.
 
 ### Jump directly to a tab or setting!
 
@@ -105,11 +87,12 @@ The panel size follows the **shared lvim-utils geometry** (`config.ui.size.float
     :LvimControlCenter lsp 2
     ```
 
-- You can also open from Lua:
+- You can also open from Lua (look the instance up by its command name):
 
     ```lua
-    require("lvim-control-center.ui").open("lsp", "codelens") -- by name
-    require("lvim-control-center.ui").open("lsp", 2) -- by row (number)
+    local cc = require("lvim-control-center")
+    cc.get("LvimControlCenter"):open("lsp", "codelens") -- by name
+    cc.get("LvimControlCenter"):open("lsp", 2) -- by row (number)
     ```
 
 ### Manage settings
@@ -132,23 +115,27 @@ A bare setting name (`:LvimControlCenter codelens`) jumps straight to it. Comman
 
 ## Configuration
 
-The configuration is passed to the `setup()` function. The most important part is defining the `groups`.
+Create an instance with `new(opts)` (or the loader-facing `setup(opts)` — see [Multiple instances](#multiple-instances)). Every instance **requires** a unique `command` and defines its own `groups`.
 
 ### Default Configuration
 
-This is the default configuration. You can override any of these fields in your own setup:
+These are the defaults. `command` is the only required field; pass any subset of the rest to override:
 
 ```lua
--- These are the defaults; pass any subset to override.
-require("lvim-control-center").setup({
+-- These are the defaults; `command` is required, everything else is optional.
+require("lvim-control-center").new({
+    command = "LvimControlCenter", -- REQUIRED, unique — the user command that opens this instance
     title = "LVIM CONTROL CENTER",
+    title_icon = "󰒓", -- Nerd Font glyph shown before the title
     title_pos = "center", -- title alignment: "center" (default) | "left" | "right"
+    -- Database directory. Omit and it is derived per command:
+    -- stdpath("data")/lvim-control-center/<command> — so each instance gets its own store.
     save = "~/.local/share/nvim/lvim-control-center",
     groups = {}, -- you define these (see below)
 
-    -- The panel SIZE is NOT set here — it follows the shared lvim-utils geometry
-    -- (config.ui.size.float, edited via :LvimUtils / the "Utils" tab), so the panel
-    -- resizes with those settings rather than a per-plugin width/height.
+    -- The panel SIZE is NOT set here — it follows the shared lvim-ui geometry
+    -- (config.ui.size.float), so the panel resizes with that shared geometry
+    -- rather than a per-plugin width/height.
     --
     -- popup_global carries the instance defaults (icons, key labels, highlight overrides).
     -- Override highlights here (see "Customizing the Appearance").
@@ -157,6 +144,31 @@ require("lvim-control-center").setup({
     },
 })
 ```
+
+`new(opts)` returns the instance, whose methods are `:open(tab?, row?, layout?)`, `:reset(name?)`, `:export(path?)`, `:import(path?)` and `:close()`. Look an instance up later with `require("lvim-control-center").get("<command>")`.
+
+### Multiple instances
+
+There is no global state — each `new()` is fully self-contained (own command, own database, own open-state), so you can run several side by side:
+
+```lua
+local cc = require("lvim-control-center")
+
+-- Programmatic — the real API:
+local main = cc.new({ command = "LvimControlCenter", groups = { general, appearance } })
+local prefs = cc.new({ command = "MyPrefs", groups = { foo, bar } }) -- its own DB, derived from the command
+main:open()
+
+-- Declarative — the loader-facing forwarder over new(). Accepts a SINGLE instance…
+require("lvim-control-center").setup({ command = "LvimControlCenter", groups = { general } })
+-- …or a LIST of instances:
+require("lvim-control-center").setup({
+    { command = "LvimControlCenter", groups = { general, appearance } },
+    { command = "MyPrefs", groups = { foo, bar } },
+})
+```
+
+`setup()` holds no state of its own — it just forwards to `new()`. Called with no `command` (or an empty table) it is a quiet no-op, so a present-but-unconfigured plugin loads cleanly. `new({})` with no command raises an error.
 
 ---
 
@@ -178,7 +190,7 @@ local general = {
             get = function()
                 return vim.o.relativenumber
             end,
-            -- set(value, is_load, bufnr): is_load is true while persisted values are applied on startup
+            -- set(value, is_load, ctx): is_load is true while persisted values are applied on startup
             set = function(value)
                 vim.o.relativenumber = value
             end,
@@ -215,7 +227,8 @@ local appearance = {
     },
 }
 
-require("lvim-control-center").setup({
+require("lvim-control-center").new({
+    command = "LvimControlCenter",
     groups = { general, appearance },
 })
 ```
@@ -242,8 +255,8 @@ Each setting is a table with the following fields:
 | `default` | `any`                    | The default value used when nothing is persisted.                                                                                                       |
 | `icon`    | `string`                 | (Optional) A per-row icon.                                                                                                                              |
 | `options` | `any[]`                  | (For `type="select"`) The list of possible values.                                                                                                     |
-| `get`     | `function(): any`        | (Optional) Returns the current live value (shown in the UI). Resolution: `get()` → persisted value → `default`.                                         |
-| `set`     | `function(value, is_load, bufnr?)` | Called when the value changes (`is_load=false`) and once per persisted value on startup (`is_load=true`). Persist yourself with `require("lvim-control-center.persistence.data").save(name, value)` if the value is not derived from live editor state. |
+| `get`     | `function(ctx): any`     | (Optional) Returns the current live value (shown in the UI). Resolution: `get(ctx)` → persisted value → `default`.                                       |
+| `set`     | `function(value, is_load, ctx)` | Called when the value changes (`is_load=false`) and once per persisted value on startup (`is_load=true`). Persist yourself with `ctx.data:save(name, value)` if the value is not derived from live editor state — it writes to THIS instance's database. |
 | `run`     | `function(bufnr)`        | (For `type="action"`) Callback run when the row is activated; receives the buffer that was current when the panel opened.                                |
 | `break_load` | `boolean`             | (Optional) Skip applying this setting on startup.                                                                                                       |
 | `enabled` | `function(): boolean`    | (Optional) Hide the row when it returns `false` (evaluated on open) — for settings that don't apply in the current context.                             |
@@ -257,17 +270,15 @@ Each setting is a table with the following fields:
 
 1. `value` — the new value.
 2. `is_load` — `true` while a persisted value is being applied on startup, `false` on a user change. Use it to skip side effects (notifications, file writes) during restore.
-3. `bufnr` — the buffer that was current when the panel opened.
+3. `ctx` — the owning instance's context: `ctx.data` (persistence bound to THIS instance's database), `ctx.bufnr` (the buffer current when the panel opened), and `ctx.instance` (the instance itself). Because persistence comes from `ctx`, a group is instance-agnostic — the same group works in any instance and saves to that instance's store.
 
-If the value is derived from live editor state (e.g. `vim.o.*`), `get`/`set` are enough — no manual persistence is needed. To persist a value across sessions, save it yourself:
+If the value is derived from live editor state (e.g. `vim.o.*`), `get`/`set` are enough — no manual persistence is needed. To persist a value across sessions, save it through `ctx.data`:
 
 ```lua
-local data = require("lvim-control-center.persistence.data")
-
-set = function(value, is_load)
+set = function(value, is_load, ctx)
     vim.o.relativenumber = value
-    if not is_load then
-        data.save("relativenumber", value)
+    if not is_load and ctx and ctx.data then
+        ctx.data:save("relativenumber", value)
     end
 end
 ```
@@ -276,10 +287,11 @@ end
 
 The panel is rendered by [lvim-utils](https://github.com/lvim-tech/lvim-utils), so it is themed by the shared `LvimUi*` highlight groups. These self-theme from the lvim-utils palette and follow the active lvim-colorscheme automatically — normally you don't need to set anything, the panel matches the rest of the lvim-tech UI.
 
-To override the panel's look, pass highlight overrides to the lvim-utils UI instance via `popup_global.highlights` in `setup()`:
+To override the panel's look, pass highlight overrides to the lvim-utils UI instance via `popup_global.highlights` in `new()`:
 
 ```lua
-require("lvim-control-center").setup({
+require("lvim-control-center").new({
+    command = "LvimControlCenter",
     popup_global = {
         highlights = {
             -- map a panel element to an inline def or another group

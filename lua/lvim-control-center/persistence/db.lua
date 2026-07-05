@@ -1,6 +1,8 @@
 -- lvim-control-center.persistence.db: a thin wrapper around sqlite.lua managing one
--- "settings" table (name TEXT unique → value TEXT, type TEXT). Every CRUD call is pcall-
--- guarded and returns false on error (or when the DB is not yet initialised), so callers
+-- "settings" table (name TEXT unique → value TEXT, type TEXT) per DATABASE HANDLE. Each
+-- control-center instance opens its OWN handle (its own file), so two instances never share
+-- a table and setting-name collisions across instances are impossible. Every CRUD call is
+-- pcall-guarded and returns false on error (or when the handle failed to open), so callers
 -- never see raw sqlite errors and the plugin degrades gracefully if sqlite.lua is missing.
 --
 ---@module "lvim-control-center.persistence.db"
@@ -10,15 +12,79 @@ local tbl = require("sqlite.tbl")
 
 local M = {}
 
---- Active database connection, nil when the DB has not been initialised yet.
----@type table|nil
-M.db = nil
+--- Filename of the SQLite database inside an instance's `save` directory. The directory is
+--- what differs per instance (derived from its command), so the filename is constant.
+M.DB_FILENAME = "lvim-control-center.db"
 
---- Active handle for the "settings" table, nil before init().
----@type table|nil
-M.settings = nil
+---@class LvimControlCenterDb  One open database handle (one instance's store).
+---@field db       table   The sqlite.lua database object
+---@field settings table   The "settings" table handle
+local Handle = {}
+Handle.__index = Handle
 
-local DB_FILENAME = "lvim-control-center.db"
+-- ─── lifecycle ────────────────────────────────────────────────────────────────
+
+--- Open (or create) a database under `save_dir` and ensure the settings table exists.
+--- ALWAYS returns a handle; on failure the handle is closed (`:is_open()` false) and every
+--- CRUD call degrades to false — so callers never have to nil-check the handle itself.
+---@param save_dir? string  Directory that will contain the database file.
+---                         Defaults to stdpath("data")/lvim-control-center.
+---@return LvimControlCenterDb  The handle (open on success, closed on failure)
+function M.open(save_dir)
+    save_dir = save_dir or (vim.fn.stdpath("data") .. "/lvim-control-center")
+    local db_full_path = save_dir .. "/" .. M.DB_FILENAME
+    local self = setmetatable({}, Handle)
+
+    -- Create the storage directory when it doesn't exist yet.
+    if vim.fn.isdirectory(save_dir) == 0 then
+        if not pcall(vim.fn.mkdir, save_dir, "p") then
+            return self
+        end
+    end
+
+    local ok = pcall(function()
+        self.db = sqlite({
+            uri = db_full_path,
+            opts = { foreign_keys = "ON" },
+        })
+        if not self.db then
+            error("sqlite constructor returned nil")
+        end
+        -- One row per named setting; the name column is the natural primary key.
+        self.settings = tbl("settings", {
+            id = { "integer", primary = true, autoincrement = true },
+            name = { "text", required = true, unique = true },
+            value = { "text" },
+            type = { "text" },
+        }, self.db)
+    end)
+
+    if not ok or not self.db or not self.settings then
+        self.db = nil
+        self.settings = nil
+    end
+    return self
+end
+
+--- Whether the handle is open and usable.
+---@return boolean
+function Handle:is_open()
+    return self.db ~= nil and self.settings ~= nil
+end
+
+--- Close the database connection. Subsequent CRUD calls return false.
+---@return nil
+function Handle:close()
+    if self.db then
+        pcall(function()
+            if self.db.close then
+                self.db:close()
+            end
+        end)
+        self.db = nil
+        self.settings = nil
+    end
+end
 
 -- ─── CRUD ─────────────────────────────────────────────────────────────────────
 
@@ -26,8 +92,8 @@ local DB_FILENAME = "lvim-control-center.db"
 ---@param conditions table|nil  Column-value pairs used as a WHERE clause
 ---@param options    table|nil  Additional query options forwarded to sqlite.tbl:get()
 ---@return table[]|nil|false  Matched rows, nil if none found, false on error
-function M.find(conditions, options)
-    if not M.db or not M.settings then
+function Handle:find(conditions, options)
+    if not self:is_open() then
         return false
     end
     local query_options = options or {}
@@ -35,7 +101,7 @@ function M.find(conditions, options)
         query_options.where = conditions
     end
     local ok, result = pcall(function()
-        return M.settings:get(query_options)
+        return self.settings:get(query_options)
     end)
     if not ok then
         return false
@@ -49,12 +115,12 @@ end
 --- Insert a new row into the settings table.
 ---@param values table  Column-value pairs for the new row
 ---@return integer|false  The new row ID, or false on error
-function M.insert(values)
-    if not M.db or not M.settings then
+function Handle:insert(values)
+    if not self:is_open() then
         return false
     end
     local ok, row_id = pcall(function()
-        return M.settings:insert(values)
+        return self.settings:insert(values)
     end)
     if not ok then
         return false
@@ -66,12 +132,12 @@ end
 ---@param conditions table  Column-value pairs for the WHERE clause
 ---@param values     table  Column-value pairs to set
 ---@return boolean  true on success, false on error
-function M.update(conditions, values)
-    if not M.db or not M.settings then
+function Handle:update(conditions, values)
+    if not self:is_open() then
         return false
     end
     local ok, _ = pcall(function()
-        M.settings:update({ where = conditions, set = values })
+        self.settings:update({ where = conditions, set = values })
     end)
     return ok
 end
@@ -79,84 +145,25 @@ end
 --- Remove rows that match conditions.
 ---@param conditions table  Column-value pairs for the WHERE clause
 ---@return boolean  true on success, false on error
-function M.remove(conditions)
-    if not M.db or not M.settings then
+function Handle:remove(conditions)
+    if not self:is_open() then
         return false
     end
     local ok, _ = pcall(function()
-        M.settings:remove(conditions)
+        self.settings:remove(conditions)
     end)
     return ok
 end
 
--- ─── lifecycle ────────────────────────────────────────────────────────────────
-
---- Open (or create) the SQLite database and ensure the settings table exists.
---- Safe to call multiple times; subsequent calls are no-ops if already open.
----@param path? string  Directory that will contain the database file.
----                     Defaults to stdpath("data")/lvim-control-center.
----@return boolean  true on success, false if the database could not be opened
-function M.init(path)
-    local save_dir = path or vim.fn.stdpath("data") .. "/lvim-control-center"
-    local db_full_path = save_dir .. "/" .. DB_FILENAME
-
-    -- Create the storage directory when it doesn't exist yet.
-    if vim.fn.isdirectory(save_dir) == 0 then
-        local mkdir_ok, _ = pcall(vim.fn.mkdir, save_dir, "p")
-        if not mkdir_ok then
-            return false
-        end
-    end
-
-    local ok, _ = pcall(function()
-        M.db = sqlite({
-            uri = db_full_path,
-            opts = { foreign_keys = "ON" },
-        })
-        if not M.db then
-            error("sqlite constructor returned nil")
-        end
-        -- One row per named setting; the name column is the natural primary key.
-        M.settings = tbl("settings", {
-            id = { "integer", primary = true, autoincrement = true },
-            name = { "text", required = true, unique = true },
-            value = { "text" },
-            type = { "text" },
-        }, M.db)
-    end)
-
-    if not ok then
-        M.db = nil
-        return false
-    end
-    return true
-end
-
---- Close the database connection and reset the module state.
---- Subsequent calls to find/insert/update/remove will return false until
---- init() is called again.
----@return nil
-function M.close_db_connection()
-    if M.db then
-        pcall(function()
-            if M.db.close then
-                M.db:close()
-            end
-        end)
-        M.db = nil
-    end
-end
-
---- Execute a raw SQL statement.
---- Intended for migrations or administrative tasks only.
+--- Execute a raw SQL statement. Intended for migrations / administrative tasks only.
 ---@param sql_query string  Raw SQL to execute
 ---@return any|false  Query result, or false on error
-function M.exec(sql_query)
-    if not M.db then
+function Handle:exec(sql_query)
+    if not self.db then
         return false
     end
     local ok, result = pcall(function()
-        return M.db:exec(sql_query)
+        return self.db:exec(sql_query)
     end)
     if not ok then
         return false

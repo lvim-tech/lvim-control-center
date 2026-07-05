@@ -1,11 +1,14 @@
--- lvim-control-center.config: the live configuration table.
--- Holds the defaults; setup() deep-merges user overrides into it IN PLACE, so every
--- require("lvim-control-center.config") reader sees the effective values.
+-- lvim-control-center.config: the default configuration TEMPLATE.
 --
--- The internal fields (groups, save, title, title_pos) are consumed by the plugin itself;
--- popup_global is passed verbatim to require("lvim-ui").new(). The panel's SIZE is NOT
--- set here — it comes from the shared lvim-utils geometry (config.ui.size.float, edited via
--- :LvimUtils / the "Utils" tab), so the panel tracks those settings.
+-- Multi-instance: there is no single live config table any more. `M.defaults()` returns a
+-- FRESH table each call, and `instance.new(opts)` deep-merges the user opts into its own
+-- copy — so every instance owns its config and two instances never share state. Readers hold
+-- `instance.config`, not a module require.
+--
+-- The internal fields (command, groups, save, title, title_icon, title_pos) are consumed by
+-- the plugin itself; popup_global is passed verbatim to require("lvim-ui").new(). The panel's
+-- SIZE is NOT set here — it comes from the shared lvim-ui geometry (config.ui.size.float), so
+-- the panel tracks that shared geometry.
 --
 ---@module "lvim-control-center.config"
 
@@ -15,8 +18,8 @@
 ---@field label?     string                         Display name (falls back to name)
 ---@field desc?      string                         Alternative display name (label fallback when no `label`)
 ---@field default?   any                            Default value applied when no saved value exists
----@field get?       fun(): any                     Read the current live value
----@field set?       fun(value: any, is_load: boolean, bufnr?: integer)  Apply a new value
+---@field get?       fun(ctx: LvimControlCenterCtx): any                 Read the current live value
+---@field set?       fun(value: any, is_load: boolean, ctx: LvimControlCenterCtx)  Apply a new value
 ---@field run?       fun(bufnr: integer)            Callback for action rows
 ---@field options?   any[]                          Available choices for select rows
 ---@field icon?      string                         Per-row icon override
@@ -27,6 +30,11 @@
 ---@field disabled?  boolean|fun(value: any): boolean  Render the row dimmed + struck through (value unchanged); evaluated live, so it can track a parent toggle
 ---@field validate?  fun(value: any): boolean       Reject a changed value when it returns false (not applied/persisted)
 
+---@class LvimControlCenterCtx  Injected into every setting get/set — the instance's context.
+---@field data     LvimControlCenterData  Persistence bound to THIS instance's database
+---@field bufnr?   integer                The buffer active when the panel was opened (nil at startup restore)
+---@field instance table                  The owning instance
+
 ---@class LvimControlCenterGroup
 ---@field name      string        Unique group identifier
 ---@field label?    string        Display name shown on the tab (falls back to name)
@@ -35,98 +43,103 @@
 ---@field menu?     boolean       Force MENU vs FORM layout; nil = auto (menu when the group has no value rows)
 
 ---@class LvimControlCenterConfig
+---@field command      string      REQUIRED — the unique user command that opens this instance (e.g. "LvimControlCenter")
 ---@field groups       LvimControlCenterGroup[]  Registered setting groups
----@field save         string      Directory used for the SQLite database
+---@field save         string      Directory used for the SQLite database (derived from `command` when nil)
 ---@field title        string      Window title shown in the header
+---@field title_icon   string      Nerd Font glyph shown before the title
 ---@field title_pos    "center"|"left"|"right"  Title alignment in the panel's title row
 ---@field popup_global table       Passed verbatim to lvim-ui.new()
 
----@type LvimControlCenterConfig
-local M = {
-    -- ── internal ──────────────────────────────────────────────────────────
-    groups = {},
-    save = "~/.local/share/nvim/lvim-control-center",
-    title = "LVIM CONTROL CENTER",
-    -- Title alignment in the panel's title row: "center" (default here) | "left" | "right".
-    title_pos = "center",
+local M = {}
 
-    -- ── lvim-utils ui instance config ────────────────────────────────────
-    popup_global = {
-        position = "editor",
-        -- SIZE is intentionally omitted: it comes from the shared lvim-utils geometry (config.ui.size.float,
-        -- edited via :LvimUtils / the "Utils" tab). ui.new() now applies the rest of this table as per-open
-        -- defaults, so setting width/height here would override that shared geometry — leave it out.
-        max_items = 15,
-        filetype = "lvim-utils-ui",
-        close_keys = { "q", "<Esc>" },
-        markview = false,
+--- A FRESH default config table (a new table each call, so each instance owns its own).
+---@return LvimControlCenterConfig
+function M.defaults()
+    return {
+        -- ── internal ──────────────────────────────────────────────────────────
+        command = nil, -- REQUIRED per instance; validated in instance.new()
+        groups = {},
+        -- nil → instance.new() derives stdpath("data")/lvim-control-center/<command>.
+        save = nil,
+        title = "LVIM CONTROL CENTER",
+        -- Nerd Font glyph rendered before the title (cog). Override via new({ title_icon = "…" }).
+        title_icon = "󰒓",
+        -- Title alignment in the panel's title row: "center" (default here) | "left" | "right".
+        title_pos = "center",
 
-        icons = {
-            bool_on = "󰄬",
-            bool_off = "󰍴",
-            select = "󰘮",
-            number = "󰎠",
-            string = "󰬴",
-            action = "",
-            -- 3 leading spaces so the separator line begins at the same column as a normal
-            -- row's text (indent + 1-cell icon + 2), not one column further in.
-            spacer = "   ──────",
-            multi_selected = "󰄬",
-            multi_empty = "󰍴",
-            current = "➤",
-        },
+        -- ── lvim-ui ui instance config ───────────────────────────────────────
+        popup_global = {
+            position = "editor",
+            -- SIZE is intentionally omitted: it comes from the shared lvim-ui geometry (config.ui.size.float).
+            -- ui.new() applies the rest of this table as per-open defaults, so setting width/height here would
+            -- override that shared geometry — leave it out.
+            max_items = 15,
+            filetype = "lvim-utils-ui",
+            close_keys = { "q", "<Esc>" },
+            markview = false,
 
-        labels = {
-            navigate = "navigate",
-            confirm = "confirm",
-            cancel = "cancel",
-            close = "close",
-            toggle = "toggle",
-            cycle = "cycle",
-            edit = "edit",
-            execute = "execute",
-            tabs = "tabs",
-        },
-
-        keys = {
-            down = "j",
-            up = "k",
-            confirm = "<CR>",
-            cancel = "<Esc>",
-            close = "q",
-
-            tabs = {
-                next = "l",
-                prev = "h",
+            icons = {
+                bool_on = "󰄬",
+                bool_off = "󰍴",
+                select = "󰘮",
+                number = "󰎠",
+                string = "󰬴",
+                action = "",
+                -- 3 leading spaces so the separator line begins at the same column as a normal
+                -- row's text (indent + 1-cell icon + 2), not one column further in.
+                spacer = "   ──────",
+                multi_selected = "󰄬",
+                multi_empty = "󰍴",
+                current = "➤",
             },
 
-            select = {
+            labels = {
+                navigate = "navigate",
+                confirm = "confirm",
+                cancel = "cancel",
+                close = "close",
+                toggle = "toggle",
+                cycle = "cycle",
+                edit = "edit",
+                execute = "execute",
+                tabs = "tabs",
+            },
+
+            keys = {
+                down = "j",
+                up = "k",
                 confirm = "<CR>",
                 cancel = "<Esc>",
+                close = "q",
+
+                tabs = {
+                    next = "l",
+                    prev = "h",
+                },
+
+                select = {
+                    confirm = "<CR>",
+                    cancel = "<Esc>",
+                },
+
+                multiselect = {
+                    toggle = "<Space>",
+                    confirm = "<CR>",
+                    cancel = "<Esc>",
+                },
+
+                list = {
+                    next_option = "<Tab>",
+                    prev_option = "<BS>",
+                },
             },
 
-            multiselect = {
-                toggle = "<Space>",
-                confirm = "<CR>",
-                cancel = "<Esc>",
-            },
-
-            list = {
-                next_option = "<Tab>",
-                prev_option = "<BS>",
-            },
+            -- Empty by default — uses lvim-utils global LvimUi* groups.
+            -- Override via new({ popup_global = { highlights = { LvimUiTitle = "MyGroup" } } }).
+            highlights = {},
         },
-
-        -- Empty by default — uses lvim-utils global LvimUi* groups.
-        -- Override via setup({ popup_global = { highlights = { LvimUiTitle = "MyGroup" } } }).
-        highlights = {},
-    },
-}
-
--- Expand the tilde in the save path so all downstream code receives an
--- absolute filesystem path rather than a shell-relative one.
-if M.save then
-    M.save = vim.fn.expand(M.save)
+    }
 end
 
 return M

@@ -1,42 +1,61 @@
--- lvim-control-center: plugin entry point. Call M.setup() once from your Neovim config to
--- deep-merge user overrides into the live config, initialise the SQLite database, register
--- the :LvimControlCenter user command, and re-apply the settings persisted from a prior
--- session. The UI is built lazily on first open (see lvim-control-center.ui), so setup()
--- stays cheap and does not require lvim-ui to be present at startup.
+-- lvim-control-center: plugin entry point. Multi-instance — there is NO global singleton.
+--
+--   • Programmatic (the real API):
+--       local cc = require("lvim-control-center")
+--       local panel = cc.new({ command = "LvimControlCenter", groups = { … } })
+--       panel:open()                              -- :reset() :export() :import() :close()
+--
+--   • Declarative (for the generic lvim-nvim loader, which calls setup(opts)):
+--       setup({ command = "LvimControlCenter", groups = { … } })   -- one instance
+--       setup({ { command = "A", … }, { command = "B", … } })      -- several instances
+--     setup() is a thin forwarder over new() — it holds no state of its own. Called with no
+--     command (or an empty table) it is a no-op, so a present-but-unconfigured plugin loads
+--     cleanly.
+--
+-- Each instance owns its config, its OWN SQLite database, its user command and its open-state
+-- (see instance.lua). Building the UI is lazy (first open), so new() stays cheap and does not
+-- require lvim-ui at startup.
 --
 ---@module "lvim-control-center"
 
-local config = require("lvim-control-center.config")
-local db = require("lvim-control-center.persistence.db")
-local utils = require("lvim-utils.utils")
-local commands = require("lvim-control-center.commands")
+local instance = require("lvim-control-center.instance")
 
 local M = {}
 
---- Initialise the control center. Must be called before any other API usage.
---- The panel's "lvim-utils-ui" filetype is registered with the cursor module centrally
---- (lvim-utils dependencies `cursor = { ft = { "lvim-utils-ui" } }`), so no per-plugin
---- cursor.setup call is made here (it would only duplicate the central registration).
----@param opts? LvimControlCenterConfig  Partial config, deep-merged into defaults. Omit/nil = defaults as-is.
----@return nil
+--- Create a control center instance. Requires a unique `opts.command`.
+---@type fun(opts: LvimControlCenterConfig): LvimControlCenterInstance
+M.new = instance.new
+
+--- Look up a live instance by its command name.
+---@param command string
+---@return LvimControlCenterInstance|nil
+function M.get(command)
+    return instance._instances[command]
+end
+
+--- Loader-facing forwarder over new(). Accepts a SINGLE instance opts (`{ command = … }`) or
+--- a LIST of them (`{ {command=…}, {command=…} }`). Lenient: no command / empty / nil → no-op.
+---@param opts? LvimControlCenterConfig|LvimControlCenterConfig[]
+---@return LvimControlCenterInstance|LvimControlCenterInstance[]|nil
 function M.setup(opts)
-    -- Deep-merge user overrides into the default config table (in place, so every reader sees them).
-    if opts ~= nil then
-        utils.merge(config, opts)
+    if type(opts) ~= "table" then
+        return
     end
-
-    -- Initialise the SQLite persistence layer.
-    db.init(config.save)
-
-    -- Register the :LvimControlCenter user command and apply persisted settings.
-    commands.init()
-
-    -- Runtime UI-geometry settings (the shared lvim-ui.config.size / .backdrop): restore the persisted values
-    -- from the store (this control center's sqlite when present, else a JSON file) and register the standalone
-    -- `:LvimUtils` geometry panel. Absorbed from lvim-utils in the split — control-center owns the config-panel
-    -- plumbing now (it already depends on lvim-ui + lvim-utils.store, so no dependency cycle).
-    require("lvim-control-center.settings").restore()
-    require("lvim-control-center.config_ui").setup()
+    -- A list of instance option tables (array part present) → build each.
+    if opts[1] ~= nil then
+        local built = {}
+        for _, o in ipairs(opts) do
+            if type(o) == "table" and o.command then
+                built[#built + 1] = instance.new(o)
+            end
+        end
+        return built
+    end
+    -- A single instance — but only when configured with a command (otherwise a quiet no-op).
+    if opts.command == nil then
+        return
+    end
+    return instance.new(opts)
 end
 
 return M
