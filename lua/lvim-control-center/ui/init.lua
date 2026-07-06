@@ -31,8 +31,9 @@ end
 --- Action rows carry no value and always return nil.
 ---@param setting LvimControlCenterSetting
 ---@param ctx     LvimControlCenterCtx
+---@param saved   table<string, any>
 ---@return any
-local function load_value(setting, ctx)
+local function load_value(setting, ctx, saved)
     if setting.type == "action" then
         return nil
     end
@@ -43,7 +44,7 @@ local function load_value(setting, ctx)
         end)
     end
     if value == nil then
-        value = ctx.data:load(setting.name)
+        value = saved[setting.name]
     end
     if value == nil then
         value = setting.default
@@ -57,8 +58,9 @@ end
 ---@param setting     LvimControlCenterSetting
 ---@param origin_bufnr integer  Buffer that was current when the popup was opened
 ---@param ctx         LvimControlCenterCtx
+---@param saved       table<string, any>
 ---@return table  Row table compatible with lvim-utils UiRow
-local function setting_to_row(setting, origin_bufnr, ctx)
+local function setting_to_row(setting, origin_bufnr, ctx, saved)
     local row = {
         type = setting.type,
         name = setting.name,
@@ -67,7 +69,7 @@ local function setting_to_row(setting, origin_bufnr, ctx)
         -- description (used as the label fallback here, and surfaced by lvim-utils where a
         -- description line is rendered) instead of it being dropped at the bridge.
         desc = setting.desc,
-        value = load_value(setting, ctx),
+        value = load_value(setting, ctx, saved),
         default = setting.default,
         options = setting.options,
         top = setting.top,
@@ -118,6 +120,7 @@ function M.open(instance, tab_selector, id_or_row, layout)
     -- Remember the calling buffer so action callbacks and set(ctx) can reference it.
     local origin_bufnr = vim.api.nvim_get_current_buf()
     local ctx = instance:ctx(origin_bufnr)
+    local saved = instance.data:export_all()
 
     -- Build one tab per group, converting each setting into a lvim-utils row.
     ---@type table[]
@@ -133,7 +136,7 @@ function M.open(instance, tab_selector, id_or_row, layout)
                 hidden = ok and not on
             end
             if not hidden then
-                table.insert(rows, setting_to_row(setting, origin_bufnr, ctx))
+                table.insert(rows, setting_to_row(setting, origin_bufnr, ctx, saved))
             end
         end
         -- Strip any trailing whitespace that may have been appended to the icon.
@@ -198,8 +201,7 @@ function M.open(instance, tab_selector, id_or_row, layout)
         end
     end
 
-    instance._is_open = true
-    ui.tabs({
+    local ok, err = pcall(ui.tabs, {
         title = config.title,
         title_icon = config.title_icon, -- cog by default (config/init.lua); override via new({ title_icon })
         title_pos = config.title_pos, -- centred by default (config/init.lua); "left" | "center" | "right"
@@ -215,6 +217,12 @@ function M.open(instance, tab_selector, id_or_row, layout)
             instance._is_open = false
         end,
     })
+    if ok then
+        instance._is_open = true
+    else
+        instance._is_open = false
+        vim.notify("Control Center UI failed: " .. tostring(err), vim.log.levels.ERROR, { title = "Control Center" })
+    end
 end
 
 return M

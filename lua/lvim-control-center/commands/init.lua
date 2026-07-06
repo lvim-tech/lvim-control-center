@@ -36,16 +36,10 @@ function M.register(instance)
     -- :<Command> import [path]    import this instance's persisted settings from JSON
     -- :<Command> reset [setting]  reset one setting (or all) to defaults
     vim.api.nvim_create_user_command(cmd, function(opts)
-        -- Pull an optional LAYOUT token (float / area / bottom — order-independent) out of the args; it picks
-        -- where the panel docks. The remaining args are the export/import/reset verb or the tab / setting / row.
         local LAYOUTS = { float = true, area = true, bottom = true }
-        local layout, rest = nil, {}
-        for _, a in ipairs(opts.fargs) do
-            if LAYOUTS[a] and not layout then
-                layout = a
-            else
-                rest[#rest + 1] = a
-            end
+        local layout, rest = nil, vim.list_extend({}, opts.fargs)
+        if LAYOUTS[rest[1]] then
+            layout = table.remove(rest, 1)
         end
         local a1, a2 = rest[1], rest[2]
         -- Host subcommands (e.g. quick toggles) take priority over the built-in verbs, so a plugin can

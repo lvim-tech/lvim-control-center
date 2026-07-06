@@ -20,12 +20,15 @@ Data.__index = Data
 
 --- Encode a Lua value into a (type-tag, text) pair suitable for SQLite storage.
 ---@param value any
----@return LvimControlCenterValueType type_tag
----@return string       text_value
+---@return LvimControlCenterValueType? type_tag
+---@return string?       text_value
 local function encode_value(value)
+    if value == nil then
+        return nil, nil
+    end
     if type(value) == "number" then
         if math.floor(value) ~= value then
-            return "float", tostring(value)
+            return "float", ("%.17g"):format(value)
         end
         return "int", tostring(value)
     elseif type(value) == "boolean" then
@@ -33,12 +36,11 @@ local function encode_value(value)
     elseif type(value) == "string" then
         return "string", value
     elseif type(value) == "table" then
-        local ok, json = pcall(vim.fn.json_encode, value)
+        local ok, json = pcall(vim.json.encode, value)
         if ok then
             return "json", json
-        else
-            error("Failed to encode value as JSON")
         end
+        return nil, nil
     else
         return "string", tostring(value)
     end
@@ -54,7 +56,7 @@ local function decode_value(val, val_type)
     elseif val_type == "bool" then
         return val == "1"
     elseif val_type == "json" then
-        local ok, decoded = pcall(vim.fn.json_decode, val)
+        local ok, decoded = pcall(vim.json.decode, val, { luanil = { object = true, array = true } })
         if ok then
             return decoded
         end
@@ -81,7 +83,13 @@ end
 ---@param value any     Value to store
 ---@return integer|boolean  Row ID on insert, true on update, false on error
 function Data:save(param, value)
+    if value == nil then
+        return self:clear(param)
+    end
     local val_type, db_value = encode_value(value)
+    if not (val_type and db_value) then
+        return false
+    end
     local existing = self.db:find({ name = param })
     if existing and existing[1] then
         return self.db:update({ name = param }, { value = db_value, type = val_type })

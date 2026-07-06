@@ -22,9 +22,8 @@ local merge = require("lvim-utils.utils").merge
 local M = {}
 
 --- Registry of live instances by command name (for :checkhealth and duplicate detection).
---- Weak values so a garbage-collected instance drops out on its own.
 ---@type table<string, table>
-M._instances = setmetatable({}, { __mode = "v" })
+M._instances = {}
 
 ---@class LvimControlCenterInstance
 ---@field config LvimControlCenterConfig
@@ -52,6 +51,7 @@ function M.new(opts)
             vim.log.levels.WARN,
             { title = "Control Center" }
         )
+        M._instances[opts.command]:close()
     end
 
     local self = setmetatable({}, Instance)
@@ -140,7 +140,14 @@ function Instance:apply_saved_settings()
                     value = setting.default
                 end
                 if value ~= nil and setting.set then
-                    setting.set(value, true, ctx)
+                    local ok, err = pcall(setting.set, value, true, ctx)
+                    if not ok then
+                        vim.notify(
+                            ("Restore failed for %s: %s"):format(setting.name, tostring(err)),
+                            vim.log.levels.WARN,
+                            { title = "Control Center" }
+                        )
+                    end
                 end
             end
         end
@@ -159,7 +166,7 @@ function Instance:reset(name)
             local is_value = setting.type ~= "action" and setting.type ~= "spacer"
             if is_value and (name == nil or setting.name == name) then
                 self.data:clear(setting.name)
-                if setting.default ~= nil and setting.set then
+                if not setting.break_load and setting.default ~= nil and setting.set then
                     pcall(setting.set, setting.default, true, ctx)
                 end
                 n = n + 1
@@ -174,12 +181,42 @@ end
 ---@return table<string, any>
 function Instance:settings_map()
     local out = {}
+    local saved = self.data:export_all()
     for k, v in pairs(self.data:export_all()) do
         if k:sub(1, #PRESET_PREFIX) ~= PRESET_PREFIX then
             out[k] = v
         end
     end
+    for _, group in ipairs(self.config.groups or {}) do
+        for _, setting in ipairs(group.settings or {}) do
+            if
+                setting.name
+                and setting.type ~= "action"
+                and setting.type ~= "spacer"
+                and saved[setting.name] == nil
+            then
+                out[setting.name] = setting.default
+            end
+        end
+    end
     return out
+end
+
+---@param map table<string, any>
+---@return nil
+function Instance:replace_settings(map)
+    local keep = {}
+    for name in pairs(map or {}) do
+        keep[name] = true
+    end
+    for _, group in ipairs(self.config.groups or {}) do
+        for _, setting in ipairs(group.settings or {}) do
+            if setting.name and not keep[setting.name] then
+                self.data:clear(setting.name)
+            end
+        end
+    end
+    self.data:import_all(map or {})
 end
 
 --- The default export path for this instance (namespaced by command so instances don't collide).
@@ -196,7 +233,8 @@ function Instance:export(path)
     -- expand() globs it away to "".
     path = vim.fs.normalize(path or self:default_export_path())
     local map = self:settings_map()
-    local ok = pcall(vim.fn.writefile, { vim.fn.json_encode(map) }, path)
+    local ok, encoded = pcall(vim.json.encode, map)
+    ok = ok and pcall(vim.fn.writefile, { encoded }, path)
     if ok then
         vim.notify(("Exported %d settings → %s"):format(vim.tbl_count(map), path), vim.log.levels.INFO, {
             title = "Control Center",
@@ -215,12 +253,15 @@ function Instance:import(path)
         vim.notify("No such file: " .. path, vim.log.levels.ERROR, { title = "Control Center" })
         return
     end
-    local ok, map = pcall(vim.fn.json_decode, table.concat(vim.fn.readfile(path), "\n"))
+    local ok, map = pcall(vim.json.decode, table.concat(vim.fn.readfile(path), "\n"), {
+        luanil = { object = true, array = true },
+    })
     if not ok or type(map) ~= "table" then
         vim.notify("Invalid import file: " .. path, vim.log.levels.ERROR, { title = "Control Center" })
         return
     end
-    local n = self.data:import_all(map)
+    self:replace_settings(map)
+    local n = vim.tbl_count(map)
     self:apply_saved_settings()
     vim.notify(("Imported %d settings"):format(n), vim.log.levels.INFO, { title = "Control Center" })
 end
@@ -280,7 +321,7 @@ function Instance:preset_load(name)
     if type(map) ~= "table" then
         return false
     end
-    self.data:import_all(map)
+    self:replace_settings(map)
     self:apply_saved_settings()
     return true
 end
@@ -308,6 +349,10 @@ end
 --- Close this instance: drop its command, close its database, and remove it from the registry.
 ---@return nil
 function Instance:close()
+    if self._ui and self._is_open and self._ui.close then
+        pcall(self._ui.close)
+    end
+    self._is_open = false
     pcall(vim.api.nvim_del_user_command, self.config.command)
     if self.db then
         self.db:close()

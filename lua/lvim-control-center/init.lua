@@ -108,7 +108,8 @@ function M.export_all(path)
     for command, inst in pairs(instance._instances) do
         snapshot[command] = inst:settings_map()
     end
-    local ok = pcall(vim.fn.writefile, { vim.fn.json_encode(snapshot) }, path)
+    local ok, encoded = pcall(vim.json.encode, snapshot)
+    ok = ok and pcall(vim.fn.writefile, { encoded }, path)
     if ok then
         vim.notify(
             ("Exported %d instance(s) → %s"):format(vim.tbl_count(snapshot), path),
@@ -130,7 +131,9 @@ function M.import_all(path)
         vim.notify("No such file: " .. path, vim.log.levels.ERROR, { title = "Control Center" })
         return 0
     end
-    local ok, map = pcall(vim.fn.json_decode, table.concat(vim.fn.readfile(path), "\n"))
+    local ok, map = pcall(vim.json.decode, table.concat(vim.fn.readfile(path), "\n"), {
+        luanil = { object = true, array = true },
+    })
     if not ok or type(map) ~= "table" then
         vim.notify("Invalid import file: " .. path, vim.log.levels.ERROR, { title = "Control Center" })
         return 0
@@ -139,7 +142,7 @@ function M.import_all(path)
     for command, settings in pairs(map) do
         local inst = instance._instances[command]
         if inst and type(settings) == "table" then
-            inst.data:import_all(settings)
+            inst:replace_settings(settings)
             inst:apply_saved_settings()
             applied = applied + 1
         end

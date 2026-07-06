@@ -55,13 +55,26 @@ end
 ---@return boolean  true on success
 function File:write(tbl)
     pcall(vim.fn.mkdir, vim.fn.fnamemodify(self.path, ":h"), "p")
-    local fd = io.open(self.path, "w")
+    local ok, encoded = pcall(vim.json.encode, tbl)
+    if not ok then
+        return false
+    end
+    local tmp = self.path .. ".tmp"
+    local fd = io.open(tmp, "w")
     if not fd then
         return false
     end
-    fd:write(vim.json.encode(tbl))
-    fd:close()
-    return true
+    local wrote = fd:write(encoded)
+    local closed = fd:close()
+    if not (wrote and closed) then
+        pcall(os.remove, tmp)
+        return false
+    end
+    local renamed = os.rename(tmp, self.path)
+    if not renamed then
+        pcall(os.remove, tmp)
+    end
+    return renamed == true
 end
 
 --- Persist a value under `name`.
@@ -70,6 +83,10 @@ end
 ---@return boolean
 function File:save(name, value)
     local tbl = self:read()
+    if value == nil then
+        tbl[name] = nil
+        return self:write(tbl)
+    end
     tbl[name] = value
     return self:write(tbl)
 end
