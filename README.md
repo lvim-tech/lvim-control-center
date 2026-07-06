@@ -68,7 +68,22 @@ By default the panel opens as a centred **float**. Pass a layout token to dock i
 :LvimControlCenter bottom appearance " a layout token can be combined with a tab / setting
 ```
 
-The panel size follows the **shared lvim-ui geometry** (`config.ui.size.float`) — the same geometry every lvim-ui surface reads, so resizing it once (from your own config, or a settings group you register that writes `config.ui.size`) resizes this panel too.
+The panel size follows the **shared dock geometry** (`lvim-utils.config.dock.geometry.<layout>`, resolved via `lvim-utils.dock.slot`) — the same geometry every docked lvim-tech surface reads, so resizing it once (from your own config, or a settings group you register that writes `dock.geometry`) resizes this panel too. To override the geometry for **this instance only** (without touching the global that every other surface shares), populate `force.<layout>` — a per-open anchored override deep-merged over the global (see [Default Configuration](#default-configuration)).
+
+### The dock stack
+
+With `dock.dock_stack = true` (the default) the panel is a full consumer of the shared **dock stack** (`lvim-utils.dock`). The dock keys every entry by **(id, layout)**: the instance's identity is its command, but the SAME instance opened in a **different layout is a separate entry** in that layout's stack. So one panel can be docked in **float, bottom AND area at the same time** — three independent live panels, one entry in each stack — while re-opening the **same** layout just **re-shows** the one entry there (never a duplicate in that stack). The dock enforces **one visible consumer per layout**, so opening the panel automatically **parks** any other consumer (a picker, a terminal, another panel) that is visible in the same layout — the panel can never visually overlap one. Set `dock.dock_stack = false` to opt out: the panel then opens **standalone** — its geometry is still central (`dock.slot(layout, dock.force[layout])`, so `dock.force` still applies), it simply does not join the managed stack (no cycling, no one-visible-per-layout). When `lvim-utils.dock` is unavailable the panel likewise opens directly, un-managed.
+
+While the panel is focused, the dock's keys apply on top of the panel's own navigation:
+
+```vim
+<Leader>n / <Leader>p   " cycle to the next / previous consumer in this layout
+<Leader>x               " kill the panel's dock entry (its command still reopens it)
+<Leader>m               " the dock menu — pick any live consumer to bring forward
+:LvimDock float|area|bottom [menu]
+```
+
+The panel's own keys (`j`/`k` move, `h`/`l` switch tab, `<CR>` edit, `<Space>`, `q`/`<Esc>` close) are unchanged. Closing with `q`/`<Esc>` **parks** that layout's entry (it stays cyclable and in the menu); `<Leader>x` drops it from the stack. Re-running the command **with the same layout** re-shows that entry (no duplicate); running it **with a different layout token** opens a second, independent entry in that other layout's stack — so `:LvimControlCenter float` then `:LvimControlCenter bottom` leaves a live panel in each.
 
 ### Jump directly to a tab or setting!
 
@@ -155,6 +170,22 @@ require("lvim-control-center").new({
     -- Optional central hook: called after ANY value edited in the panel is applied.
     -- One place for telemetry / reload / side effects — signature (name, value, instance).
     on_change = nil, -- function(name, value, instance) end
+
+    -- Dock-stack integration, namespaced under `dock` (matches lvim-dependencies).
+    dock = {
+        -- true = full dock-STACK consumer (managed: cyclable <Leader>n/p/x/m, :LvimDock,
+        -- one-visible-per-layout, no overlap); false = geometry-only (central dock.slot size/
+        -- backdrop, opens standalone, NOT in the stack).
+        dock_stack = true,
+
+        -- Per-plugin per-layout ANCHORED geometry overrides, deep-merged per field OVER the global
+        -- `lvim-utils.config.dock.geometry.<layout>`; empty {} = inherit the global unchanged. Each
+        -- layout may carry: height, height_auto, backdrop = { enabled, mode, dim = { amount },
+        -- darken = { amount } }, auto_hide, keep_focus. FLOAT ALSO: width, width_auto. area/bottom
+        -- are ALWAYS full-width — NO width/width_auto (ignored if set). This is control-center's OWN
+        -- override — SEPARATE from the global dock.geometry the built-in "Utils" panel edits.
+        force = { float = {}, area = {}, bottom = {} },
+    },
 
     -- The panel SIZE is NOT set here — it follows the shared lvim-ui geometry
     -- (config.ui.size.float), so the panel resizes with that shared geometry

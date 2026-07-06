@@ -19,19 +19,68 @@ local commands = require("lvim-control-center.commands")
 local ui = require("lvim-control-center.ui")
 local merge = require("lvim-utils.utils").merge
 
+local api = vim.api
+
+-- ─── dock-stack integration (lvim-utils.dock) ──────────────────────────────────
+-- The panel is a consumer of the shared DOCK-STACK manager, which keys every entry by (id, LAYOUT):
+-- the instance's stable `id = "lvim-control-center:<command>"` is its base identity, and the SAME id
+-- opened in a DIFFERENT layout is a SEPARATE entry in that other layout's stack. So one instance can be
+-- docked in float, bottom AND area SIMULTANEOUSLY — three live panels, one entry in each stack — while
+-- re-opening the SAME (id, layout) RE-SHOWS the one entry (never a duplicate in that stack). That is why
+-- ALL open-state is PER LAYOUT: `self._panels[layout]` (see `Instance:panel_state`), one consumer / one
+-- set of windows / one dock KEY per layout. `dock.open` RETURNS the entry key; the instance STORES it and
+-- passes it back to the lifecycle APIs (`parked`/`dropped`/`hide`/`close`) for THAT entry.
+--
+-- Routing `:open()` through `dock.open` makes the dock's one-visible-per-layout invariant apply: opening the
+-- panel PARKS whatever other consumer (a picker, a terminal, another panel) is visible in the SAME layout,
+-- so the panel can never visually OVERLAP one. It also joins the dock's `<Leader>n`/`<Leader>p` cycle, the
+-- `<Leader>x` kill, the `<Leader>m` menu and `:LvimDock`. Semantics = PARK & REMEMBER: `hide` closes the
+-- panel window but keeps the instance + its persisted state, so `show` rebuilds it (the panel is materialised
+-- fresh from config + the SQLite store on every open, so "state" is simply the instance staying alive); a
+-- self-dismiss (its own `q`/`<Esc>`) parks that layout's entry (stays cyclable); `<Leader>x` (`close`) drops
+-- it from the stack. When the dock is unavailable (an older lvim-utils) the panel opens directly, un-managed.
+--
+-- This plugin is the REFERENCE per-(id, layout) consumer — the other dock consumers copy this shape.
+
+---@type table|false|nil  cached lvim-utils.dock module (nil = unprobed, false = probed & absent)
+local dock_mod = nil
+--- The dock-stack manager, or nil when unavailable — then the panel opens directly, un-managed.
+---@return table?
+local function get_dock()
+    if dock_mod == nil then
+        local ok, m = pcall(require, "lvim-utils.dock")
+        dock_mod = ok and m or false
+    end
+    return dock_mod or nil
+end
+
 local M = {}
 
 --- Registry of live instances by command name (for :checkhealth and duplicate detection).
 ---@type table<string, table>
 M._instances = {}
 
+--- Per-LAYOUT panel state. Because the dock keys every entry by (id, layout), ONE instance can be docked
+--- in float, bottom AND area at once — three live panels, one entry in each stack — so every piece of
+--- open-state is PER LAYOUT, kept in `self._panels[layout]` (lazily created by `Instance:panel_state`).
+--- A flat `self._panel` would orphan the first window the moment the panel is opened in a second layout.
+---@class LvimControlCenterPanelState
+---@field is_open boolean|nil  This layout's panel is currently visible
+---@field panel   table|nil    Live panel handle from ui.tabs while open (nil when closed) — used to tear it down
+---@field wins    integer[]|nil  Windows this layout's open created (container + tab bar + content + footer) — the dock reads them for its leader owner / is_current
+---@field focus_win integer|nil  This layout's content panel window (the dock `focus` target)
+---@field consumer table|nil    Memoised LvimDockConsumer handle for THIS layout (`id` = base identity, `layout` fixed)
+---@field dock_open { tab: string|integer|nil, layout: string, row: string|integer|nil }|nil  Pending open params the consumer's `show` replays
+---@field key     string|nil    The dock ENTRY KEY (id, layout) returned by `dock.open` — passed back to the lifecycle APIs
+---@field dock_alive boolean|nil  This entry is live/parked (true) vs killed by `<Leader>x` (false) — drives is_alive
+---@field dock_teardown boolean|nil  The panel is being torn down BY the dock manager (park/close), so its close callback must NOT re-notify the dock
+
 ---@class LvimControlCenterInstance
 ---@field config LvimControlCenterConfig
 ---@field db     LvimControlCenterDb
 ---@field data   LvimControlCenterData
----@field _is_open boolean
 ---@field _ui    table|nil  Cached lvim-ui instance (the presenter factory, built lazily on first open)
----@field _panel table|nil  Live panel handle from ui.tabs while open (nil when closed) — used to tear the panel down
+---@field _panels table<string, LvimControlCenterPanelState>  Per-layout panel state (float/bottom/area, each an independent live entry)
 local Instance = {}
 Instance.__index = Instance
 
@@ -80,7 +129,7 @@ function M.new(opts)
     end
     self.data = data.bind(self.db)
 
-    self._is_open = false
+    self._panels = {}
     self._ui = nil
 
     -- Register the instance's own `:<command>` user command — UNLESS the host opts out
@@ -118,13 +167,169 @@ function Instance:ctx(bufnr)
     }
 end
 
---- Open this instance's panel. Delegates to the shared UI bridge.
+--- This instance's stable dock identity / dedup key. Namespaced by the (unique) command, so two
+--- instances stack as two distinct dock entries.
+---@return string
+function Instance:dock_id()
+    return "lvim-control-center:" .. self.config.command
+end
+
+--- Lazily create + return this instance's per-LAYOUT panel state slot. Every piece of open-state (the
+--- live panel handle, its windows, the memoised consumer, the dock entry KEY, the alive/teardown flags)
+--- lives HERE, keyed by layout — so an open in float and an open in bottom are wholly independent live
+--- entries and neither orphans the other's window.
+---@param layout string  "float" | "area" | "bottom"
+---@return LvimControlCenterPanelState
+function Instance:panel_state(layout)
+    self._panels[layout] = self._panels[layout] or {}
+    return self._panels[layout]
+end
+
+--- Build (once, memoised in `_panels[layout].consumer`) + return this instance's dock consumer FOR ONE
+--- LAYOUT — an `LvimDockConsumer` (the lvim-utils.dock contract; a cross-plugin type, annotated `table`).
+--- `id` is the UNCHANGED base identity (`dock_id()`) — layout is NOT baked into it; the dock composes the
+--- (id, layout) key. Because the SAME id can be open in every layout at once, there is ONE consumer PER
+--- layout, each with a fixed `layout` and each callback reading / writing `_panels[layout]`. `show` replays
+--- that layout's pending open (`ui.open` in this layout); `hide` PARKS it (close the window, keep the
+--- instance → restorable); `close` (`<Leader>x`) drops the entry; `is_alive` tracks whether it was killed;
+--- `buffers` / `is_current` / `focus` read that layout's live windows.
+---@param layout string  "float" | "area" | "bottom"
+---@return table  the LvimDockConsumer handle for this layout
+function Instance:dock_consumer(layout)
+    local ps = self:panel_state(layout)
+    if ps.consumer then
+        return ps.consumer
+    end
+    ps.consumer = {
+        id = self:dock_id(), -- base identity, UNCHANGED across layouts — the dock keys the entry by (id, layout)
+        name = self.config.title or self.config.command,
+        icon = self.config.title_icon, -- the cog (verified single-width nerd glyph)
+        layout = layout, -- which stack THIS entry joins (fixed for this per-layout consumer)
+        show = function()
+            -- A dock-driven show (open / cycle-back / restore): the panel is materialised fresh from
+            -- config + the persisted store. Clear the teardown flag so the rebuilt panel's close
+            -- callback parks normally again; mark the entry alive.
+            ps.dock_teardown = false
+            ps.dock_alive = true
+            local o = ps.dock_open or {}
+            ui.open(self, o.tab, o.row, layout)
+        end,
+        hide = function()
+            self:park_panel(layout) -- PARK: close the window, KEEP the instance (restorable on the stack)
+        end,
+        close = function()
+            -- `<Leader>x` — kill THIS layout's dock entry: tear its visible panel down and drop from the
+            -- stack. The instance itself stays registered (its command still opens it again), and its
+            -- OTHER layouts' entries are untouched; only this (id, layout) entry is removed.
+            ps.dock_alive = false
+            self:park_panel(layout)
+        end,
+        is_alive = function()
+            return ps.dock_alive == true
+        end,
+        focus = function()
+            local w = ps.focus_win
+            if w and api.nvim_win_is_valid(w) then
+                pcall(api.nvim_set_current_win, w)
+            end
+        end,
+        buffers = function()
+            -- Every live panel window's buffer (container / tab bar / content / footer) — where the
+            -- dock installs its buffer-local `<Leader>` owner. All belong to this layout's dock entry.
+            local out = {}
+            for _, w in ipairs(ps.wins or {}) do
+                if api.nvim_win_is_valid(w) then
+                    local b = api.nvim_win_get_buf(w)
+                    if api.nvim_buf_is_valid(b) then
+                        out[#out + 1] = b
+                    end
+                end
+            end
+            return out
+        end,
+        is_current = function()
+            if not ps.is_open then
+                return false
+            end
+            local cur = api.nvim_get_current_win()
+            for _, w in ipairs(ps.wins or {}) do
+                if w == cur then
+                    return true
+                end
+            end
+            return false
+        end,
+    }
+    return ps.consumer
+end
+
+--- PARK this layout's visible panel: close its window (KEEPING the instance + its persisted state, so
+--- `show` rebuilds it) while flagging the teardown as manager-driven so the panel's close callback does
+--- NOT re-notify the dock. No-op when nothing is open in that layout.
+---@param layout string  "float" | "area" | "bottom"
+---@return nil
+function Instance:park_panel(layout)
+    local ps = self:panel_state(layout)
+    if ps.panel and ps.is_open and ps.panel.close then
+        ps.dock_teardown = true
+        pcall(ps.panel.close)
+    end
+end
+
+--- Called by the UI bridge when THIS layout's panel window closes (the tabs `callback`). Resets that
+--- layout's open-state, then — for a USER self-dismiss (`q`/`<Esc>`, NOT a manager park/close) — PARKS
+--- that entry on the dock (by its stored KEY) so it stays cyclable (`<Leader>n/p/m`) and the layout collapses.
+---@param layout string  "float" | "area" | "bottom"
+---@return nil
+function Instance:on_panel_closed(layout)
+    local ps = self:panel_state(layout)
+    ps.is_open = false
+    ps.panel = nil
+    ps.wins = nil
+    ps.focus_win = nil
+    local teardown = ps.dock_teardown
+    ps.dock_teardown = false
+    if teardown then
+        return -- the dock manager (park/close) already fixed up its bookkeeping
+    end
+    local d = get_dock()
+    if d and ps.dock_alive and ps.key then
+        d.parked(ps.key) -- self-dismiss → keep on the stack, collapse the layout, don't reveal a neighbour
+    end
+end
+
+--- Open this instance's panel. With `config.dock.dock_stack = true` (the default) AND the dock present the
+--- open is ROUTED THROUGH the dock stack (`dock.open` parks any other consumer visible in the layout →
+--- zero overlap, and the entry joins `<Leader>n/p/x/m` + `:LvimDock`); the consumer's `show` runs the
+--- real `ui.open`. With `dock.dock_stack = false` — or without the dock (an older lvim-utils) — it opens
+--- STANDALONE (`ui.open`): geometry is STILL central (the panel sizes via `dock.slot(layout,
+--- config.dock.force[layout])` inside the surface, so `config.dock.force` still applies), it simply does NOT join
+--- the managed stack.
 ---@param tab?    string|integer  Tab to activate (name or 1-based index)
 ---@param row?    string|integer  Row to focus (name or 1-based index)
 ---@param layout? string          "float" (default) | "area" | "bottom"
 ---@return nil
 function Instance:open(tab, row, layout)
-    ui.open(self, tab, row, layout)
+    layout = layout or "float"
+    local config = self.config
+    local d = get_dock()
+    local ps = self:panel_state(layout)
+    if d and config.dock.dock_stack then
+        ps.dock_open = { tab = tab, row = row, layout = layout }
+        local consumer = self:dock_consumer(layout)
+        -- Refresh the ANCHORED geometry override per open: `do_show` feeds it to `dock.slot(layout,
+        -- consumer.slot)` for this entry's rect. Empty {} = inherit the global geometry; a populated
+        -- `config.dock.force[layout]` forces this entry's size/backdrop.
+        consumer.slot = config.dock.force and config.dock.force[layout] or nil
+        -- STORE the returned ENTRY KEY (id, layout): the lifecycle notifications (`parked`/`dropped`)
+        -- for THIS layout's entry take that key back. Re-opening the same (id, layout) returns the same
+        -- key and RE-SHOWS the one entry — never a duplicate in the stack.
+        ps.key = d.open(consumer)
+    else
+        -- Standalone: dock_stack disabled (geometry-only) OR the dock manager is unavailable. `ui.open`
+        -- still sizes from the central authority + `config.dock.force[layout]`, it is just not in the stack.
+        ui.open(self, tab, row, layout)
+    end
 end
 
 --- Apply every persisted setting at startup — one bulk read, then each setting's set(value, true, ctx).
@@ -350,14 +555,25 @@ end
 --- Close this instance: drop its command, close its database, and remove it from the registry.
 ---@return nil
 function Instance:close()
-    -- Tear the visible panel down FIRST (via the live ui.tabs handle), so it can't sit open over a
-    -- closed database. self._ui is the presenter FACTORY (no close); the per-open panel handle is
-    -- self._panel, set by the ui bridge on a successful open.
-    if self._panel and self._is_open and self._panel.close then
-        pcall(self._panel.close)
+    -- The instance is going away, not parking — so tear down ALL of its live panels, one per layout it
+    -- was docked in. For each: DROP its dock entry by its stored KEY (remove the leader owner + drop it
+    -- from the stack WITHOUT revealing a neighbour), then tear the visible panel down (via the live
+    -- ui.tabs handle) so it can't sit open over a closed database. self._ui is the presenter FACTORY (no
+    -- close); the per-open handle is `ps.panel`, set by the ui bridge on a successful open. Flag the
+    -- teardown so on_panel_closed doesn't re-park.
+    local d = get_dock()
+    for _, ps in pairs(self._panels) do
+        ps.dock_alive = false
+        if d and ps.key then
+            pcall(d.dropped, ps.key)
+        end
+        if ps.panel and ps.is_open and ps.panel.close then
+            ps.dock_teardown = true
+            pcall(ps.panel.close)
+        end
+        ps.panel = nil
+        ps.is_open = false
     end
-    self._panel = nil
-    self._is_open = false
     pcall(vim.api.nvim_del_user_command, self.config.command)
     if self.db then
         self.db:close()

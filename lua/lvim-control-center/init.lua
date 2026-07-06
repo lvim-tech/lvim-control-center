@@ -71,12 +71,21 @@ function M.list()
         for _, g in ipairs(inst.config.groups or {}) do
             nset = nset + #(g.settings or {})
         end
+        -- Open-state is now PER LAYOUT (the panel can be docked in float/bottom/area at once), so
+        -- `is_open` is true when ANY layout's panel is currently visible.
+        local is_open = false
+        for _, ps in pairs(inst._panels or {}) do
+            if ps.is_open then
+                is_open = true
+                break
+            end
+        end
         out[#out + 1] = {
             command = command,
             save = inst.config.save,
             groups = #(inst.config.groups or {}),
             settings = nset,
-            is_open = inst._is_open,
+            is_open = is_open,
             instance = inst,
         }
     end

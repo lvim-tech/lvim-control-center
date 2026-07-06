@@ -7,7 +7,8 @@
 --
 -- The internal fields (command, groups, save, title, title_icon, title_pos) are consumed by
 -- the plugin itself; popup_global is passed verbatim to require("lvim-ui").new(). The panel's
--- SIZE is NOT set here — it comes from the shared lvim-ui geometry (config.ui.size.float), so
+-- SIZE is NOT set here — it comes from the CENTRAL geometry authority
+-- `lvim-utils.config.dock.geometry.float` (resolved via `lvim-utils.dock.slot` inside the surface), so
 -- the panel tracks that shared geometry.
 --
 ---@module "lvim-control-center.config"
@@ -53,7 +54,21 @@
 ---@field title_icon   string      Nerd Font glyph shown before the title
 ---@field title_pos    "center"|"left"|"right"  Title alignment in the panel's title row
 ---@field on_change?   fun(name: string, value: any, instance: LvimControlCenterInstance)  Called after any value edited in the panel is applied — one central hook for telemetry / reload / side effects
+---@field dock?         LvimControlCenterDock  Dock-stack integration (dock_stack + per-layout geometry overrides)
 ---@field popup_global table       Passed verbatim to lvim-ui.new()
+
+---@class LvimControlCenterDock  Dock-stack integration, namespaced under `config.dock` (matches lvim-dependencies).
+---@field dock_stack?  boolean     true = full dock-STACK consumer (managed / cyclable); false = geometry-only standalone open (see below)
+---@field force?       { float: LvimDockGeometryOverride, area: LvimDockGeometryOverride, bottom: LvimDockGeometryOverride }  Per-layout ANCHORED geometry overrides deep-merged OVER the global `lvim-utils.config.dock.geometry.<layout>`
+
+---@class LvimDockGeometryOverride  Anchored per-open override merged OVER the global dock geometry (empty {} = inherit)
+---@field height?      number       Slot height — a screen fraction ≤ 1 or an absolute row count
+---@field height_auto? boolean      true → content-fit UP TO `height`; false/absent → fixed `height`
+---@field width?       number       FLOAT ONLY — slot width (fraction ≤ 1 or count); ignored for area/bottom (always full-width)
+---@field width_auto?  boolean      FLOAT ONLY — content-fit UP TO `width`
+---@field backdrop?    table|false  Backdrop veil override `{ enabled?, mode, dim = { amount }, darken = { amount } }` (or `false` to force OFF)
+---@field auto_hide?   boolean      Auto-hide the entry when focus leaves it
+---@field keep_focus?  boolean      Keep focus on the panel after open (do not return to the opener)
 
 local M = {}
 
@@ -78,12 +93,29 @@ function M.defaults()
         -- Title alignment in the panel's title row: "center" (default here) | "left" | "right".
         title_pos = "center",
 
+        -- ── dock-stack integration ───────────────────────────────────────────
+        -- Namespaced under `dock` (matches lvim-dependencies → `config.dock.dock_stack` / `config.dock.force`).
+        dock = {
+            -- true = full dock-STACK consumer (managed: cyclable <Leader>n/p/x/m, :LvimDock,
+            -- one-visible-per-layout, no overlap); false = geometry-only (central dock.slot size/
+            -- backdrop, opens standalone, NOT in the stack).
+            dock_stack = true,
+            -- Per-plugin per-layout ANCHORED geometry overrides, deep-merged per field OVER the global
+            -- `lvim-utils.config.dock.geometry.<layout>`; empty {} = inherit the global unchanged. Each
+            -- layout may carry: height, height_auto, backdrop = { enabled, mode, dim = { amount },
+            -- darken = { amount } }, auto_hide, keep_focus. FLOAT ALSO: width, width_auto. area/bottom
+            -- are ALWAYS full-width — NO width/width_auto (ignored if set).
+            -- NOTE: this is control-center's OWN override; it is SEPARATE from the global
+            -- `lvim-utils.config.dock.geometry` that the built-in "Utils" panel edits.
+            force = { float = {}, area = {}, bottom = {} },
+        },
+
         -- ── lvim-ui ui instance config ───────────────────────────────────────
         popup_global = {
             position = "editor",
-            -- SIZE is intentionally omitted: it comes from the shared lvim-ui geometry (config.ui.size.float).
-            -- ui.new() applies the rest of this table as per-open defaults, so setting width/height here would
-            -- override that shared geometry — leave it out.
+            -- SIZE is intentionally omitted: it comes from the CENTRAL geometry authority
+            -- (`lvim-utils.config.dock.geometry.float` via `lvim-utils.dock.slot`). ui.new() applies the rest of
+            -- this table as per-open defaults, so setting width/height here would override that — leave it out.
             max_items = 15,
             filetype = "lvim-utils-ui",
             close_keys = { "q", "<Esc>" },

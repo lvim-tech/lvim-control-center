@@ -9,8 +9,10 @@ CONTENTS                                            *lvim-control-center*
   4. Settings ............................... |lvim-control-center-settings|
   5. Command ................................ |lvim-control-center-command|
   6. Navigation ............................. |lvim-control-center-navigation|
-  7. Persistence ............................ |lvim-control-center-persistence|
-  8. Appearance ............................. |lvim-control-center-appearance|
+  7. Dock stack ............................. |lvim-control-center-dock|
+       Geometry override (force) ........... |lvim-control-center-force|
+  8. Persistence ............................ |lvim-control-center-persistence|
+  9. Appearance ............................. |lvim-control-center-appearance|
 
 ==============================================================================
 1. INTRODUCTION                               *lvim-control-center-intro*
@@ -46,6 +48,10 @@ profiles `:preset_save/load/list/delete(name)`. Registry helpers on the module: 
       register_command = true,         -- false → no `:<command>`; host opens via :open()
       subcommands = {},                -- extra host subcommands: { ["name"] = fun(...) end }
       on_change = nil,                 -- fun(name, value, instance): hook after any panel edit
+      dock = {                         -- dock-stack integration (see |lvim-control-center-dock|)
+          dock_stack = true,           -- false → geometry-only standalone
+          force = { float = {}, area = {}, bottom = {} }, -- per-layout geometry overrides (see below)
+      },
       groups = {                       -- see |lvim-control-center-groups|
           {
               name = "editor",
@@ -159,7 +165,55 @@ doubles as a quick search across the whole config.
 (All configurable via `popup_global.keys`.)
 
 ==============================================================================
-7. PERSISTENCE                             *lvim-control-center-persistence*
+7. DOCK STACK                                    *lvim-control-center-dock*
+
+With `dock.dock_stack = true` (the default) the panel is a full consumer of the shared DOCK STACK
+(`lvim-utils.dock`). The dock keys every entry by (id, LAYOUT): the instance's identity is its
+command (`lvim-control-center:<command>`), but the SAME instance opened in a DIFFERENT layout is a
+SEPARATE entry in that layout's stack. So one panel can be docked in float, bottom AND area AT ONCE
+— three independent live panels, one entry in each stack — while re-opening the SAME layout just
+RE-SHOWS the one entry there (never a duplicate in that stack). The dock enforces ONE VISIBLE
+consumer per layout, so opening the panel PARKS any other consumer (a picker, a terminal, another
+panel) visible in the same layout — the panel can never visually overlap one. Set
+`dock.dock_stack = false` to opt out: the panel opens STANDALONE — geometry is still central
+(`dock.slot(layout, dock.force[layout])`, so `dock.force` still applies), it simply does not join
+the managed stack (no cycling, no one-visible-per-layout). Without `lvim-utils.dock` the panel
+likewise opens directly, un-managed.
+
+                                                 *lvim-control-center-force*
+GEOMETRY OVERRIDE (`dock.force`)
+
+`dock.force.<layout>` is a per-plugin, per-layout ANCHORED geometry override, deep-merged per field
+OVER the global `lvim-utils.config.dock.geometry.<layout>` for THIS instance's opens only; an
+empty `{}` inherits the global unchanged. It is SEPARATE from the global geometry that the
+built-in "Utils" panel edits. Each layout may carry:
+
+  height        number   slot height — a screen fraction <= 1 or an absolute row count
+  height_auto   boolean  true → content-fit UP TO `height`; false/absent → fixed `height`
+  backdrop      table    veil override `{ enabled?, mode, dim = { amount }, darken = { amount } }`
+                         (or `false` to force the backdrop OFF)
+  auto_hide     boolean  auto-hide the entry when focus leaves it
+  keep_focus    boolean  keep focus on the panel after open (do not return to the opener)
+  width         number   FLOAT ONLY — slot width (fraction <= 1 or count)
+  width_auto    boolean  FLOAT ONLY — content-fit UP TO `width`
+
+`area` and `bottom` are ALWAYS full-width, so `width` / `width_auto` are ignored there.
+
+While the panel is focused, the dock keys apply on top of the panel's own navigation:
+
+  <Leader>n / <Leader>p   Cycle to the next / previous consumer in this layout
+  <Leader>x               Kill the panel's dock entry (its command still reopens it)
+  <Leader>m               The dock menu — pick any live consumer to bring forward
+  :LvimDock {layout} [menu]   Reveal a layout's dock, or its scoped menu
+
+The panel's OWN keys (see |lvim-control-center-navigation|) are unchanged. Closing with `q` /
+`<Esc>` PARKS that layout's entry (it stays cyclable and in the menu); `<Leader>x` DROPS it.
+Re-running the command WITH THE SAME LAYOUT re-shows that entry (no duplicate); running it WITH A
+DIFFERENT LAYOUT TOKEN opens a second, independent entry in that other layout's stack — so
+`:LvimControlCenter float` then `:LvimControlCenter bottom` leaves a live panel in each.
+
+==============================================================================
+8. PERSISTENCE                             *lvim-control-center-persistence*
 
 Each instance stores its values in its OWN SQLite database (`lvim-control-center.db`) under
 its `save` directory — so instances never share a store. On `new()` the saved values are
@@ -172,7 +226,7 @@ The database (`ctx.data`) is the DEFAULT. A setting may instead persist to a JSO
 global DB, e.g. a project-local, git-committable override (`.<plugin>.json` in the cwd).
 
 ==============================================================================
-8. APPEARANCE                               *lvim-control-center-appearance*
+9. APPEARANCE                               *lvim-control-center-appearance*
 
 The panel is a |lvim-utils| UI instance, themed by the shared `LvimUi*` groups which
 self-theme from the lvim-utils palette and follow the active lvim-colorscheme. To override,

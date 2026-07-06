@@ -102,7 +102,12 @@ end
 ---@param layout       string|nil          "float" (default) | "area" | "bottom" — where the panel docks
 ---@return nil
 function M.open(instance, tab_selector, id_or_row, layout)
-    if instance._is_open then
+    layout = layout or "float"
+    -- Per-LAYOUT open-state: an open in float and an open in bottom are independent live entries, so the
+    -- "already open" guard, the panel handle and its windows all live in THIS layout's slot. A float panel
+    -- being open must NOT block opening the bottom one.
+    local ps = instance:panel_state(layout)
+    if ps.is_open then
         return
     end
 
@@ -201,30 +206,65 @@ function M.open(instance, tab_selector, id_or_row, layout)
         end
     end
 
+    -- Snapshot the open windows BEFORE the panel opens, so the set of windows this open CREATES can be
+    -- diffed out afterwards (below). The dock consumer reads those windows to install its buffer-local
+    -- <Leader> owner (buffers()) and to resolve is_current — diffing (rather than scanning by a shared
+    -- frame filetype) keeps a panel already visible in ANOTHER layout, e.g. a docked picker, from being
+    -- misattributed to this instance.
+    local before = {}
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+        before[w] = true
+    end
+
+    -- Per-plugin ANCHORED geometry override for THIS layout (`config.dock.force.<layout>`) — a `{ height?,
+    -- height_auto?, width?, width_auto?, backdrop? }` table deep-merged OVER the central geometry for this
+    -- open only (empty {} = inherit the global unchanged). Passed to `ui.tabs` as its `slot` override, which
+    -- resolves it against `lvim-utils.config.dock.geometry.<layout>` in the surface — so `force` applies in
+    -- BOTH the stack (dock_stack=true) and standalone (dock_stack=false) paths, both routed through here.
+    local force = config.dock.force and config.dock.force[layout] or nil
+
     local ok, handle = pcall(ui.tabs, {
         title = config.title,
         title_icon = config.title_icon, -- cog by default (config/init.lua); override via new({ title_icon })
         title_pos = config.title_pos, -- centred by default (config/init.lua); "left" | "center" | "right"
         layout = layout, -- "float" (default) | "area" (msgarea dock) | "bottom" — from the command subcommand
-        -- No explicit width/height: the size comes from the SHARED lvim-ui geometry (config.ui.size.float),
-        -- so the panel resizes with that shared geometry.
+        -- No explicit width/height: the size comes from the CENTRAL geometry authority
+        -- (`lvim-utils.config.dock.geometry.<layout>` via `lvim-utils.dock.slot`), so the panel tracks it —
+        -- with `slot = force` (config.dock.force[layout]) as the per-open anchored override on top.
+        slot = force,
         footer_hints = true, -- live key-hint legend at the bottom (panel keys • focused-row keys)
         tabs = tabs,
         tab_selector = tab_selector,
         initial_row = id_or_row,
         on_change = on_change,
+        -- The content panel window — the dock `focus` target (do_show focuses it after show).
+        on_open = function(_, win)
+            ps.focus_win = win
+        end,
         callback = function()
-            instance._is_open = false
+            instance:on_panel_closed(layout)
         end,
     })
     if ok then
-        instance._is_open = true
+        ps.is_open = true
         -- Keep the panel handle so Instance:close() can tear the visible panel down before it
         -- closes the database (otherwise edits in a still-open panel hit a closed handle).
-        instance._panel = handle
+        ps.panel = handle
+        -- The windows this open created (container + tab bar + content + footer bands) — the dock
+        -- consumer's buffers()/is_current() read them (per layout, so a panel open in another layout
+        -- is never misattributed to this one).
+        local wins = {}
+        for _, w in ipairs(vim.api.nvim_list_wins()) do
+            if not before[w] then
+                wins[#wins + 1] = w
+            end
+        end
+        ps.wins = wins
     else
-        instance._is_open = false
-        instance._panel = nil
+        ps.is_open = false
+        ps.panel = nil
+        ps.wins = nil
+        ps.focus_win = nil
         vim.notify("Control Center UI failed: " .. tostring(handle), vim.log.levels.ERROR, { title = "Control Center" })
     end
 end

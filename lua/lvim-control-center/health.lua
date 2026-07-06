@@ -39,6 +39,16 @@ function M.check()
         health.error("lvim-utils / lvim-ui not found — the panel cannot render and new() cannot merge config")
     end
 
+    -- lvim-utils.dock — OPTIONAL: present → the panel routes through the shared dock stack (one visible
+    -- consumer per layout so it never overlaps a docked picker/terminal; <Leader> n/p/x/m + :LvimDock).
+    -- Absent → the panel opens directly (un-managed) — still fully functional.
+    local ok_dock, dock = pcall(require, "lvim-utils.dock")
+    if ok_dock and type(dock) == "table" and dock.open then
+        health.ok("lvim-utils.dock found (panel routes through the shared dock stack)")
+    else
+        health.info("lvim-utils.dock not found — the panel opens un-managed (no dock stacking)")
+    end
+
     -- Per-instance summary. No instance yet is fine (nothing has called new()).
     local n = 0
     for command, inst in pairs(instance._instances) do
@@ -56,6 +66,34 @@ function M.check()
         end
         health.info(("%d group(s), %d setting(s) registered"):format(#groups, n_settings))
         health.info(("title_pos: %s"):format(tostring(inst.config.title_pos)))
+        -- Dock mode: a full managed STACK consumer (dock_stack=true) vs geometry-only STANDALONE.
+        health.info(
+            ("dock_stack: %s (%s)"):format(
+                tostring(inst.config.dock.dock_stack ~= false),
+                (inst.config.dock.dock_stack ~= false) and "managed stack consumer" or "geometry-only standalone"
+            )
+        )
+        -- Report any NON-empty per-layout geometry override (force) — an empty {} inherits the global.
+        local force = inst.config.dock.force or {}
+        for _, layout in ipairs({ "float", "area", "bottom" }) do
+            if type(force[layout]) == "table" and next(force[layout]) ~= nil then
+                health.info(("force.%s: %s"):format(layout, vim.inspect(force[layout]):gsub("%s+", " ")))
+            end
+        end
+        -- This instance's live dock entry (if any): its layout + whether it is currently visible or parked.
+        if ok_dock and type(dock) == "table" and dock.entries then
+            local id = "lvim-control-center:" .. command
+            local found = false
+            for _, e in ipairs(dock.entries() or {}) do
+                if e.id == id then
+                    health.info(("dock entry: %s%s"):format(e.layout, e.visible and " (visible)" or " (parked)"))
+                    found = true
+                end
+            end
+            if not found then
+                health.info("dock entry: none (not currently opened)")
+            end
+        end
     end
     if n == 0 then
         health.info("no instances created yet — call require('lvim-control-center').new({ command = … })")
