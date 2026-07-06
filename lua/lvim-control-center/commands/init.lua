@@ -105,7 +105,11 @@ function M.register(instance)
         desc = ("Open %s ([float|area|bottom]; or search/export/import/reset/preset)"):format(cmd),
         nargs = "*",
         complete = function(arglead, cmdline)
-            local words = vim.split(vim.trim(cmdline), "%s+")
+            -- Preserve a trailing empty slot when the line ends in whitespace: the user has started
+            -- a NEW argument, so `:<Cmd> general <Tab>` must count as arg 2 (settings of "general"),
+            -- not arg 1. vim.trim would eat that space and misplace the position — strip only the
+            -- LEADING whitespace and keep empty fields.
+            local words = vim.split((cmdline:gsub("^%s+", "")), "%s+", { trimempty = false })
             local cands = {}
             if words[2] == "preset" then
                 -- `preset <action> [name]`

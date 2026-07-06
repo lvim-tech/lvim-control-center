@@ -201,7 +201,7 @@ function M.open(instance, tab_selector, id_or_row, layout)
         end
     end
 
-    local ok, err = pcall(ui.tabs, {
+    local ok, handle = pcall(ui.tabs, {
         title = config.title,
         title_icon = config.title_icon, -- cog by default (config/init.lua); override via new({ title_icon })
         title_pos = config.title_pos, -- centred by default (config/init.lua); "left" | "center" | "right"
@@ -219,9 +219,13 @@ function M.open(instance, tab_selector, id_or_row, layout)
     })
     if ok then
         instance._is_open = true
+        -- Keep the panel handle so Instance:close() can tear the visible panel down before it
+        -- closes the database (otherwise edits in a still-open panel hit a closed handle).
+        instance._panel = handle
     else
         instance._is_open = false
-        vim.notify("Control Center UI failed: " .. tostring(err), vim.log.levels.ERROR, { title = "Control Center" })
+        instance._panel = nil
+        vim.notify("Control Center UI failed: " .. tostring(handle), vim.log.levels.ERROR, { title = "Control Center" })
     end
 end
 

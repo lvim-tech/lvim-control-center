@@ -30,7 +30,8 @@ M._instances = {}
 ---@field db     LvimControlCenterDb
 ---@field data   LvimControlCenterData
 ---@field _is_open boolean
----@field _ui    table|nil  Cached lvim-ui instance (built lazily on first open)
+---@field _ui    table|nil  Cached lvim-ui instance (the presenter factory, built lazily on first open)
+---@field _panel table|nil  Live panel handle from ui.tabs while open (nil when closed) — used to tear the panel down
 local Instance = {}
 Instance.__index = Instance
 
@@ -349,9 +350,13 @@ end
 --- Close this instance: drop its command, close its database, and remove it from the registry.
 ---@return nil
 function Instance:close()
-    if self._ui and self._is_open and self._ui.close then
-        pcall(self._ui.close)
+    -- Tear the visible panel down FIRST (via the live ui.tabs handle), so it can't sit open over a
+    -- closed database. self._ui is the presenter FACTORY (no close); the per-open panel handle is
+    -- self._panel, set by the ui bridge on a successful open.
+    if self._panel and self._is_open and self._panel.close then
+        pcall(self._panel.close)
     end
+    self._panel = nil
     self._is_open = false
     pcall(vim.api.nvim_del_user_command, self.config.command)
     if self.db then

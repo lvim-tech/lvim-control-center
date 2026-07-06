@@ -142,6 +142,59 @@ function Handle:update(conditions, values)
     return ok
 end
 
+-- The parameter-bound upsert statement. `name` is UNIQUE, so ON CONFLICT turns the INSERT into an
+-- UPDATE — one round-trip instead of find-then-insert/update. Named params (:name/:value/:type) are
+-- bound by sqlite.lua, so no manual escaping. Uses RAW `db:eval`, NOT `tbl:insert`/`tbl:update`
+-- (those each wrap themselves in their own BEGIN/COMMIT and would nest-error inside a transaction).
+local UPSERT_SQL = "INSERT INTO settings (name, value, type) VALUES (:name, :value, :type) "
+    .. "ON CONFLICT(name) DO UPDATE SET value = excluded.value, type = excluded.type"
+
+--- Insert-or-update a settings row in one statement. sqlite.lua keeps the connection CLOSED between
+--- ops (each op opens it), so a standalone upsert wraps its eval in `with_open` (open→eval→close).
+--- Inside `Handle:transaction` the connection is ALREADY open, so it evals directly and does NOT
+--- close it — that is what lets a batch share one connection and one BEGIN/COMMIT.
+---@param name     string  Setting name (the UNIQUE key)
+---@param value    string  Encoded text value
+---@param type_tag string  Value type tag (int/float/bool/string/json)
+---@return boolean  true on success, false on error / closed handle
+function Handle:upsert(name, value, type_tag)
+    if not self:is_open() then
+        return false
+    end
+    local params = { name = name, value = value, type = type_tag }
+    return pcall(function()
+        if self.db:isopen() then
+            self.db:eval(UPSERT_SQL, params)
+        else
+            self.db:with_open(function(conn)
+                conn:eval(UPSERT_SQL, params)
+            end)
+        end
+    end)
+end
+
+--- Run `fn` inside a single transaction over ONE open connection (BEGIN … COMMIT), so a bulk import
+--- commits ONCE instead of opening/closing + committing per row. `fn`'s writes MUST go through
+--- `Handle:upsert` (which reuses the open connection), never `tbl:insert`/`tbl:update`/`tbl:remove`
+--- — those open their own nested transaction and would error. `with_open` closes the connection on
+--- the way out, which auto-rolls-back if COMMIT never ran (e.g. `fn` threw). Degrades to running
+--- `fn` unwrapped when the handle is closed.
+---@param fn fun()  The batched work (a sequence of upserts)
+---@return boolean  true if the transaction committed
+function Handle:transaction(fn)
+    if not self:is_open() then
+        pcall(fn)
+        return false
+    end
+    return pcall(function()
+        self.db:with_open(function(conn)
+            conn:eval("BEGIN")
+            fn()
+            conn:eval("COMMIT")
+        end)
+    end)
+end
+
 --- Remove rows that match conditions.
 ---@param conditions table  Column-value pairs for the WHERE clause
 ---@return boolean  true on success, false on error

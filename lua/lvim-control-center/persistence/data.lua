@@ -78,10 +78,12 @@ end
 
 -- ─── public API ───────────────────────────────────────────────────────────────
 
---- Persist a setting value into this instance's store (insert or update).
+--- Persist a setting value into this instance's store (insert-or-update in one statement).
+--- A nil value is a delete (matches the file store's semantics), so it never stores the string
+--- "nil". Encoding failures degrade to `false` — the store never throws at the caller.
 ---@param param string  Setting name (primary key in the DB)
----@param value any     Value to store
----@return integer|boolean  Row ID on insert, true on update, false on error
+---@param value any     Value to store (nil clears the key)
+---@return boolean  true on success, false on error
 function Data:save(param, value)
     if value == nil then
         return self:clear(param)
@@ -90,12 +92,7 @@ function Data:save(param, value)
     if not (val_type and db_value) then
         return false
     end
-    local existing = self.db:find({ name = param })
-    if existing and existing[1] then
-        return self.db:update({ name = param }, { value = db_value, type = val_type })
-    else
-        return self.db:insert({ name = param, value = db_value, type = val_type })
-    end
+    return self.db:upsert(param, db_value, val_type)
 end
 
 --- Load a persisted setting value from this instance's store.
@@ -124,16 +121,20 @@ function Data:export_all()
     return out
 end
 
---- Import a `name → value` map, persisting each entry. Returns the count written.
+--- Import a `name → value` map, persisting each entry in ONE transaction. Returns the count
+--- written. A `pairs` map never yields nil values, so every entry is an upsert (which composes
+--- inside the transaction) — the delete branch of `save` is never reached here.
 ---@param map table<string, any>
 ---@return integer
 function Data:import_all(map)
     local n = 0
-    for name, value in pairs(map or {}) do
-        if self:save(name, value) ~= false then
-            n = n + 1
+    self.db:transaction(function()
+        for name, value in pairs(map or {}) do
+            if self:save(name, value) ~= false then
+                n = n + 1
+            end
         end
-    end
+    end)
     return n
 end
 
