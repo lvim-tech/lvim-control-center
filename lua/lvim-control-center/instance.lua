@@ -388,7 +388,7 @@ end
 function Instance:settings_map()
     local out = {}
     local saved = self.data:export_all()
-    for k, v in pairs(self.data:export_all()) do
+    for k, v in pairs(saved) do
         if k:sub(1, #PRESET_PREFIX) ~= PRESET_PREFIX then
             out[k] = v
         end
