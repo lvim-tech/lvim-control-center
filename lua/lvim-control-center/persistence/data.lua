@@ -128,14 +128,16 @@ end
 ---@return integer
 function Data:import_all(map)
     local n = 0
-    self.db:transaction(function()
+    -- `transaction` returns false when the COMMIT never ran (everything rolled back). Honour it: a rolled-back
+    -- import wrote nothing, so the count must be 0, not the in-closure tally.
+    local committed = self.db:transaction(function()
         for name, value in pairs(map or {}) do
             if self:save(name, value) ~= false then
                 n = n + 1
             end
         end
     end)
-    return n
+    return committed and n or 0
 end
 
 --- Delete a setting's persisted value (so it reverts to its declared default).

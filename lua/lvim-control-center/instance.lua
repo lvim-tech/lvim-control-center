@@ -574,7 +574,12 @@ function Instance:close()
         ps.panel = nil
         ps.is_open = false
     end
-    pcall(vim.api.nvim_del_user_command, self.config.command)
+    -- Delete only the command WE created. With `register_command = false` the host owns `:<command>` and
+    -- drives the panel from it; deleting it here (or via the duplicate-command replace path in M.new, which
+    -- calls close()) would silently remove the host's own command.
+    if self.config.register_command ~= false then
+        pcall(vim.api.nvim_del_user_command, self.config.command)
+    end
     if self.db then
         self.db:close()
     end

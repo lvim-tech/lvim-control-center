@@ -72,8 +72,12 @@ function M.register(instance)
                     { title = "Control Center" }
                 )
             elseif action == "delete" and pname then
-                instance:preset_delete(pname)
-                vim.notify("Deleted preset: " .. pname, vim.log.levels.INFO, { title = "Control Center" })
+                local ok = instance:preset_delete(pname)
+                vim.notify(
+                    ok and ("Deleted preset: " .. pname) or ("Delete failed: " .. pname),
+                    ok and vim.log.levels.INFO or vim.log.levels.WARN,
+                    { title = "Control Center" }
+                )
             else
                 -- "preset" / "preset list" → show what's saved.
                 local names = instance:preset_list()
@@ -110,6 +114,13 @@ function M.register(instance)
             -- not arg 1. vim.trim would eat that space and misplace the position — strip only the
             -- LEADING whitespace and keep empty fields.
             local words = vim.split((cmdline:gsub("^%s+", "")), "%s+", { trimempty = false })
+            -- Mirror the runtime parse: a leading layout token (float/area/bottom) is stripped before the
+            -- args are interpreted (see the command body), so drop it here too — otherwise every downstream
+            -- `words[2]` switch is off by one (`:Cmd float <Tab>` would look for a group literally named
+            -- "float" and offer nothing).
+            if words[2] == "float" or words[2] == "area" or words[2] == "bottom" then
+                table.remove(words, 2)
+            end
             local cands = {}
             if words[2] == "preset" then
                 -- `preset <action> [name]`
