@@ -339,7 +339,7 @@ function Instance:apply_saved_settings()
     local saved = self.data:export_all()
     local ctx = self:ctx(nil)
     for _, group in ipairs(self.config.groups or {}) do
-        for _, setting in ipairs(group.settings or {}) do
+        for _, setting in ipairs(uconfig.settings_of(group)) do
             if not setting.break_load then
                 local value = saved[setting.name]
                 if value == nil then
@@ -368,7 +368,7 @@ function Instance:reset(name)
     local ctx = self:ctx(nil)
     local n = 0
     for _, group in ipairs(self.config.groups or {}) do
-        for _, setting in ipairs(group.settings or {}) do
+        for _, setting in ipairs(uconfig.settings_of(group)) do
             local is_value = setting.type ~= "action" and setting.type ~= "spacer"
             if is_value and (name == nil or setting.name == name) then
                 self.data:clear(setting.name)
@@ -394,7 +394,7 @@ function Instance:settings_map()
         end
     end
     for _, group in ipairs(self.config.groups or {}) do
-        for _, setting in ipairs(group.settings or {}) do
+        for _, setting in ipairs(uconfig.settings_of(group)) do
             if
                 setting.name
                 and setting.type ~= "action"
@@ -416,7 +416,7 @@ function Instance:replace_settings(map)
         keep[name] = true
     end
     for _, group in ipairs(self.config.groups or {}) do
-        for _, setting in ipairs(group.settings or {}) do
+        for _, setting in ipairs(uconfig.settings_of(group)) do
             if setting.name and not keep[setting.name] then
                 self.data:clear(setting.name)
             end
@@ -478,7 +478,7 @@ end
 function Instance:search()
     local items = {}
     for _, group in ipairs(self.config.groups or {}) do
-        for _, setting in ipairs(group.settings or {}) do
+        for _, setting in ipairs(uconfig.settings_of(group)) do
             if setting.type ~= "spacer" then
                 items[#items + 1] = {
                     group = group.name,

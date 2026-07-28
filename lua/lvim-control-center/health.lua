@@ -5,6 +5,7 @@
 --
 ---@module "lvim-control-center.health"
 
+local uconfig = require("lvim-control-center.config")
 local instance = require("lvim-control-center.instance")
 
 local M = {}
@@ -56,7 +57,7 @@ function M.check()
         local groups = inst.config.groups or {}
         local n_settings = 0
         for _, group in ipairs(groups) do
-            n_settings = n_settings + #(group.settings or {})
+            n_settings = n_settings + #uconfig.settings_of(group)
         end
         health.start(("instance :%s"):format(command))
         if inst.db and inst.db:is_open() then

@@ -7,6 +7,7 @@
 --
 ---@module "lvim-control-center.ui"
 
+local uconfig = require("lvim-control-center.config")
 local M = {}
 
 --- Return the instance's cached lvim-ui instance, building it on first call.
@@ -137,7 +138,7 @@ function M.open(instance, tab_selector, id_or_row, layout)
     local tabs = {}
     for _, group in ipairs(config.groups) do
         local rows = {}
-        for _, setting in ipairs(group.settings or {}) do
+        for _, setting in ipairs(uconfig.settings_of(group)) do
             -- `enabled` (when present and returning false) hides the row — used for settings
             -- that don't apply in the current context (no LSP client, a parent toggle off…).
             local hidden = false
@@ -156,7 +157,7 @@ function M.open(instance, tab_selector, id_or_row, layout)
         -- rows into footer buttons and the tab body looks empty. A form group (bool/select/number values) stays
         -- a form. `group.menu` overrides the auto-detect when set explicitly.
         local has_value = false
-        for _, setting in ipairs(group.settings or {}) do
+        for _, setting in ipairs(uconfig.settings_of(group)) do
             if setting.type ~= "action" and setting.type ~= "spacer" then
                 has_value = true
                 break
@@ -174,7 +175,7 @@ function M.open(instance, tab_selector, id_or_row, layout)
     -- Build a name → setting lookup table once so on_change is O(1).
     local setting_by_name = {}
     for _, group in ipairs(config.groups) do
-        for _, setting in ipairs(group.settings or {}) do
+        for _, setting in ipairs(uconfig.settings_of(group)) do
             if setting.name then
                 setting_by_name[setting.name] = setting
             end

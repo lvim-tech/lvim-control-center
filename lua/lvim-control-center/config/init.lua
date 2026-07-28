@@ -43,7 +43,11 @@
 ---@field name      string        Unique group identifier
 ---@field label?    string        Display name shown on the tab (falls back to name)
 ---@field icon?     string        Tab icon (trailing whitespace is stripped automatically)
----@field settings  LvimControlCenterSetting[]
+---@field settings  LvimControlCenterSetting[]|fun(): LvimControlCenterSetting[]  A LIST, or a
+---   function returning one. Use the function form when the rows describe ANOTHER plugin: a group
+---   module is required while this plugin loads, which may be before that plugin exists — a list
+---   built then is built from nothing and stays empty forever (measured: the appearance tab showed
+---   2 rows instead of 16). Resolved through `config.settings_of(group)` at every use.
 ---@field menu?     boolean       Force MENU vs FORM layout; nil = auto (menu when the group has no value rows)
 
 ---@class LvimControlCenterConfig
@@ -73,6 +77,19 @@
 ---@field keep_focus?  boolean      Keep focus on the panel after open (do not return to the opener)
 
 local M = {}
+
+--- A group's settings, whether it declared a list or a function returning one.
+--- Always returns a table, so callers can iterate the result directly.
+---@param group LvimControlCenterGroup
+---@return LvimControlCenterSetting[]
+function M.settings_of(group)
+    local s = group and group.settings
+    if type(s) == "function" then
+        local ok, list = pcall(s)
+        return (ok and type(list) == "table") and list or {}
+    end
+    return s or {}
+end
 
 --- A FRESH default config table (a new table each call, so each instance owns its own).
 ---@return LvimControlCenterConfig

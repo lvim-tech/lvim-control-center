@@ -7,6 +7,7 @@
 --
 ---@module "lvim-control-center.commands"
 
+local uconfig = require("lvim-control-center.config")
 local M = {}
 
 --- Resolve the group of a setting by its name within an instance (so a bare setting name can
@@ -16,7 +17,7 @@ local M = {}
 ---@return string|nil group_name, string|nil setting_name
 local function group_of_setting(instance, name)
     for _, group in ipairs(instance.config.groups or {}) do
-        for _, setting in ipairs(group.settings or {}) do
+        for _, setting in ipairs(uconfig.settings_of(group)) do
             if setting.name == name then
                 return group.name, setting.name
             end
@@ -137,7 +138,7 @@ function M.register(instance)
                 end
                 for _, group in ipairs(instance.config.groups or {}) do
                     cands[#cands + 1] = group.name
-                    for _, setting in ipairs(group.settings or {}) do
+                    for _, setting in ipairs(uconfig.settings_of(group)) do
                         cands[#cands + 1] = setting.name
                     end
                 end
@@ -145,7 +146,7 @@ function M.register(instance)
                 -- second arg: setting names within the chosen group
                 for _, group in ipairs(instance.config.groups or {}) do
                     if group.name == words[2] then
-                        for _, setting in ipairs(group.settings or {}) do
+                        for _, setting in ipairs(uconfig.settings_of(group)) do
                             cands[#cands + 1] = setting.name
                         end
                     end
