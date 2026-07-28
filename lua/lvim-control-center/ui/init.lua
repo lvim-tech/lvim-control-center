@@ -71,7 +71,12 @@ local function setting_to_row(setting, origin_bufnr, ctx, saved)
         desc = setting.desc,
         value = load_value(setting, ctx, saved),
         default = setting.default,
-        options = setting.options,
+        -- A select's choices may be a LIST or a FUNCTION returning one, resolved HERE (at render)
+        -- like `enabled` / `disabled`. A list has to be complete when the group module is first
+        -- required, which for a group describing another plugin is too early — that plugin may not
+        -- be loaded yet, so the module captured a fallback and showed it forever (the colorscheme
+        -- picker listed 4 themes out of 48).
+        options = type(setting.options) == "function" and setting.options() or setting.options,
         top = setting.top,
         bottom = setting.bottom,
         icon = setting.icon,

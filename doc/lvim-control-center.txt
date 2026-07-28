@@ -104,7 +104,9 @@ Each setting is one row. *LvimControlCenterSetting*
                                               (database, default) or ctx.file(path):save()
                                               (a JSON file — for a project-local override etc.)
   run?       fun(bufnr)                       callback for `action` rows
-  options?   any[]    choices for `select` rows
+  options?   any[]|fun(): any[]  choices for `select` rows; a FUNCTION is
+                     evaluated when the panel opens, so a list that depends on
+                     another plugin is never captured while this module loads
   icon?      string   per-row icon
   break_load? boolean skip applying this setting on startup
   enabled?   fun(): boolean              hide the row when it returns false (evaluated on

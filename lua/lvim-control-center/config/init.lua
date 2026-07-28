@@ -22,7 +22,9 @@
 ---@field get?       fun(ctx: LvimControlCenterCtx): any                 Read the current live value
 ---@field set?       fun(value: any, is_load: boolean, ctx: LvimControlCenterCtx)  Apply a new value
 ---@field run?       fun(bufnr: integer)            Callback for action rows
----@field options?   any[]                          Available choices for select rows
+---@field options?   any[]|fun(): any[]             Available choices for select rows; a function is
+---                                                 evaluated when the panel opens, so a list that
+---                                                 depends on another plugin is never captured early
 ---@field icon?      string                         Per-row icon override
 ---@field top?       any                            Extra metadata forwarded to lvim-utils
 ---@field bottom?    any                            Extra metadata forwarded to lvim-utils
