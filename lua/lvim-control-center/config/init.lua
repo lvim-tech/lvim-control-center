@@ -16,7 +16,9 @@
 ---@class LvimControlCenterSetting
 ---@field name       string                         Unique identifier used for persistence
 ---@field type       "bool"|"int"|"float"|"string"|"select"|"action"|"spacer"
----@field label?     string                         Display name (falls back to name)
+---@field label?     string|fun(): string           Display name (falls back to name); a FUNCTION is
+---                                                 re-evaluated on every render, so an action can name
+---                                                 the effect it will actually have right now
 ---@field desc?      string                         Alternative display name (label fallback when no `label`)
 ---@field default?   any                            Default value applied when no saved value exists
 ---@field get?       fun(ctx: LvimControlCenterCtx): any                 Read the current live value

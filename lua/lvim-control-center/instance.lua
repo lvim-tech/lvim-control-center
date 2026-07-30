@@ -480,11 +480,18 @@ function Instance:search()
     for _, group in ipairs(self.config.groups or {}) do
         for _, setting in ipairs(uconfig.settings_of(group)) do
             if setting.type ~= "spacer" then
+                -- A `label` may be a producer (an action naming the effect it would have right now), so the
+                -- search index asks it for a string rather than concatenating the function itself.
+                local label = setting.label
+                if type(label) == "function" then
+                    local ok, res = pcall(label)
+                    label = ok and res or nil
+                end
                 items[#items + 1] = {
                     group = group.name,
                     name = setting.name,
                     -- "Group ➤ Setting" — ➤ (U+27A4) is the canonical lvim-tech sequence separator.
-                    label = (group.label or group.name) .. " ➤ " .. (setting.label or setting.desc or setting.name),
+                    label = (group.label or group.name) .. " ➤ " .. (label or setting.desc or setting.name),
                 }
             end
         end

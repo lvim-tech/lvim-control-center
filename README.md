@@ -322,7 +322,7 @@ Each setting is a table with the following fields:
 | Field     | Type                     | Description                                                                                                                                             |
 | :-------- | :----------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `name`    | `string`                 | **Required.** A unique internal identifier. Often matches the option name in `vim.opt`.                                                                 |
-| `label`   | `string`                 | **Required.** The name displayed in the user interface.                                                                                                 |
+| `label`   | `string` or `fun(): string` | **Required.** The name displayed in the user interface. A **function** is re-evaluated on every render — use it when a row's wording depends on state it can itself change (an action that creates a file vs one that overwrites it). |
 | `type`    | `string`                 | **Required.** The type of row: `bool`, `int`, `float`, `string`, `select`, `action`, `spacer` (aliases `boolean`/`integer`/`number`/`text` also work).  |
 | `default` | `any`                    | The default value used when nothing is persisted.                                                                                                       |
 | `icon`    | `string`                 | (Optional) A per-row icon.                                                                                                                              |
@@ -332,7 +332,7 @@ Each setting is a table with the following fields:
 | `run`     | `function(bufnr)`        | (For `type="action"`) Callback run when the row is activated; receives the buffer that was current when the panel opened.                                |
 | `break_load` | `boolean`             | (Optional) Skip applying this setting on startup.                                                                                                       |
 | `enabled` | `function(): boolean`    | (Optional) Hide the row when it returns `false` (evaluated on open) — for settings that don't apply in the current context.                             |
-| `disabled` | `boolean` \| `function(value): boolean` | (Optional) Render the row dimmed + struck through (its value is unchanged). Evaluated live at render time, so it can track a parent toggle. |
+| `disabled` | `boolean` \| `function(row): boolean` | (Optional) Render the row dimmed + struck through (its value is unchanged). Evaluated live at render time, so it can track a parent toggle. The predicate receives the **row** — read `row.value` for the current value. |
 | `validate` | `function(value): boolean` | (Optional) Reject a changed value when it returns `false`; it is neither applied nor persisted.                                                       |
 | `desc`    | `string`                 | (Optional) A short description of the setting, forwarded to the row. Used as the label fallback when no `label` is given.                                |
 

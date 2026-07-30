@@ -96,7 +96,9 @@ Each setting is one row. *LvimControlCenterSetting*
 
   name       string   unique id, used as the persistence key
   type       "bool" | "int" | "float" | "string" | "select" | "action" | "spacer"
-  label?     string   display name (falls back to name)
+  label?     string|fun(): string   display name (falls back to name); a FUNCTION is
+                     re-evaluated on every render, so an action row can name the effect it
+                     would have RIGHT NOW (create a file vs overwrite one)
   desc?      string   short description; forwarded to the row, used as the label fallback
   default?   any      value applied when nothing is persisted
   get?       fun(ctx): any                   read the current live value
@@ -111,9 +113,10 @@ Each setting is one row. *LvimControlCenterSetting*
   break_load? boolean skip applying this setting on startup
   enabled?   fun(): boolean              hide the row when it returns false (evaluated on
                                          open) — for settings that don't apply right now
-  disabled?  boolean | fun(value): boolean  render the row dimmed + struck through (value
+  disabled?  boolean | fun(row): boolean   render the row dimmed + struck through (value
                                          unchanged); evaluated live so it can track a parent
-                                         toggle
+                                         toggle. The predicate is handed the ROW — read
+                                         `row.value` for the current value
   validate?  fun(value): boolean         reject a changed value when it returns false (it is
                                          neither applied nor persisted)
 

@@ -194,7 +194,9 @@ function M.open(instance, tab_selector, id_or_row, layout)
             local ok, valid = pcall(setting.validate, row.value)
             if ok and not valid then
                 vim.notify(
-                    "Invalid value for " .. (setting.label or setting.name),
+                    -- `label` may be a producer function (see LvimControlCenterSetting); the row carries the
+                    -- string it last rendered as, so name the setting from that rather than concatenating it.
+                    "Invalid value for " .. (row.label or setting.name),
                     vim.log.levels.WARN,
                     { title = "Control Center" }
                 )
