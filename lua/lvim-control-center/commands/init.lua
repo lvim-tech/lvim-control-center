@@ -131,16 +131,15 @@ function M.register(instance)
                     cands = instance:preset_list()
                 end
             elseif #words <= 2 then
-                -- first arg: special verbs + host subcommands + group names + every setting name (search/discovery)
+                -- FIRST ARG: the things you can ASK THIS COMMAND TO DO — its verbs, the host's own
+                -- subcommands, and the layout tokens. Group and setting names are deliberately NOT offered
+                -- here, even though the command still ACCEPTS them (`:<Cmd> Spelling`, `:<Cmd> spell_active`):
+                -- listing every setting turned one <Tab> into a wall mixing real commands with internal keys
+                -- (`config_sep`, `show_path`), which is the opposite of a hint. Discovery has its own verb —
+                -- `search` — which fuzzy-finds any setting and opens the panel on it.
                 cands = { "search", "export", "import", "reset", "preset", "float", "area", "bottom" }
                 for name in pairs(instance.config.subcommands or {}) do
                     cands[#cands + 1] = name
-                end
-                for _, group in ipairs(instance.config.groups or {}) do
-                    cands[#cands + 1] = group.name
-                    for _, setting in ipairs(uconfig.settings_of(group)) do
-                        cands[#cands + 1] = setting.name
-                    end
                 end
             else
                 -- second arg: setting names within the chosen group
