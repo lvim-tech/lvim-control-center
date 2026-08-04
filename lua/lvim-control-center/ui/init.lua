@@ -90,7 +90,7 @@ local function setting_to_row(setting, origin_bufnr, ctx, saved)
     if setting.type == "action" and setting.run then
         local s_run = setting.run
         ---@cast s_run fun(bufnr: integer)
-        row.run = function(_, _close)
+        row.run = function(_)
             pcall(function()
                 s_run(origin_bufnr)
             end)
