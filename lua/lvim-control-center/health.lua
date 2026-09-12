@@ -6,7 +6,6 @@
 ---@module "lvim-control-center.health"
 
 local uconfig = require("lvim-control-center.config")
-local instance = require("lvim-control-center.instance")
 
 local M = {}
 
@@ -52,6 +51,13 @@ function M.check()
 
     -- Per-instance summary. No instance yet is fine (nothing has called new()).
     local n = 0
+    -- Required HERE, not at the top: `instance` pulls in the sqlite persistence layer, so a top-level require
+    -- threw the whole health check when sqlite.lua was missing — the very thing the check above reports.
+    local ok_inst, instance = pcall(require, "lvim-control-center.instance")
+    if not ok_inst then
+        health.info("instance summary skipped — the instance module did not load (see the sqlite.lua check)")
+        return
+    end
     for command, inst in pairs(instance._instances) do
         n = n + 1
         local groups = inst.config.groups or {}
