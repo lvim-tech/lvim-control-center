@@ -86,30 +86,141 @@ function Handle:close()
     end
 end
 
+-- ─── bound statements ─────────────────────────────────────────────────────────
+--
+-- Every CRUD call binds its values BY INDEX through sqlite.stmt (the same approach as
+-- lvim-utils.store.sqlite). sqlite.lua's convenience layer (`tbl:get` / `tbl:insert` /
+-- `tbl:update` / `tbl:remove`, and the named-parameter form of `stmt:bind`) inlines a WHERE
+-- value as a literal and treats a string shaped like a function call (`date('now')`,
+-- `client.log(1)`) as a SQL EXPRESSION spliced in unbound — such a setting could not be
+-- written, and an update to such a value silently lost the row. Binding by index goes
+-- straight to the C API: a value is always just a value.
+
+--- A column name that can be spliced into SQL verbatim.
+---@param name any
+---@return boolean
+local function is_ident(name)
+    return type(name) == "string" and name:match("^[%a_][%w_]*$") ~= nil
+end
+
+--- Run `fn(conn)` on the open connection, opening one for the call when sqlite.lua has closed it
+--- between operations (inside `Handle:transaction` it is already open and must stay so).
+---@param db table
+---@param fn fun(conn: any)
+---@return boolean ok
+local function with_conn(db, fn)
+    return pcall(function()
+        if db:isopen() then
+            fn(db.conn)
+        else
+            db:with_open(function(c)
+                fn(c.conn)
+            end)
+        end
+    end)
+end
+
+--- `key = ?` pairs for a column→value map, in a fixed order, with the bound values.
+---@param map table
+---@return string[] clauses, any[] args
+local function pairs_bound(map)
+    local keys = {}
+    for k in pairs(map or {}) do
+        if not is_ident(k) then
+            error("invalid column name: " .. tostring(k))
+        end
+        keys[#keys + 1] = k
+    end
+    table.sort(keys)
+    local clauses, args = {}, {}
+    for _, k in ipairs(keys) do
+        clauses[#clauses + 1] = k .. " = ?"
+        args[#args + 1] = map[k]
+    end
+    return clauses, args
+end
+
+--- Bind `args` by index and step the statement (writes).
+---@param conn any
+---@param sql string
+---@param args any[]
+local function exec_bound(conn, sql, args)
+    local sqlstmt = require("sqlite.stmt")
+    local stmt = sqlstmt:parse(conn, sql)
+    for i, v in ipairs(args) do
+        if type(v) == "boolean" then
+            v = v and 1 or 0
+        end
+        stmt:bind(i, v)
+    end
+    stmt:step()
+    stmt:finalize()
+end
+
+--- Bind `args` by index and collect the rows (reads).
+---@param conn any
+---@param sql string
+---@param args any[]
+---@return table[]
+local function query_bound(conn, sql, args)
+    local sqlstmt = require("sqlite.stmt")
+    local stmt = sqlstmt:parse(conn, sql)
+    for i, v in ipairs(args) do
+        if type(v) == "boolean" then
+            v = v and 1 or 0
+        end
+        stmt:bind(i, v)
+    end
+    local rows = stmt:kvrows()
+    stmt:finalize()
+    return rows or {}
+end
+
 -- ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 --- Query rows from the settings table.
----@param conditions table|nil  Column-value pairs used as a WHERE clause
----@param options    table|nil  Additional query options forwarded to sqlite.tbl:get()
+---@param conditions table|nil  Column-value pairs used as a WHERE clause (all must match)
+---@param options    table|nil  `order_by = { asc = column }` / `{ desc = column }`, `limit = n`
 ---@return table[]|nil|false  Matched rows, nil if none found, false on error
 function Handle:find(conditions, options)
     if not self:is_open() then
         return false
     end
-    local query_options = options or {}
-    if conditions and next(conditions) ~= nil then
-        query_options.where = conditions
+    local sql = "SELECT * FROM settings"
+    local clauses, args = {}, {}
+    local ok_where = pcall(function()
+        clauses, args = pairs_bound(conditions)
+    end)
+    if not ok_where then
+        return false
     end
-    local ok, result = pcall(function()
-        return self.settings:get(query_options)
+    if #clauses > 0 then
+        sql = sql .. " WHERE " .. table.concat(clauses, " AND ")
+    end
+    options = options or {}
+    if type(options.order_by) == "table" then
+        local col, dir = options.order_by.asc, "ASC"
+        if not col then
+            col, dir = options.order_by.desc, "DESC"
+        end
+        if is_ident(col) then
+            sql = sql .. " ORDER BY " .. col .. " " .. dir
+        end
+    end
+    if type(options.limit) == "number" then
+        sql = sql .. " LIMIT " .. math.floor(options.limit)
+    end
+    local rows
+    local ok = with_conn(self.db, function(conn)
+        rows = query_bound(conn, sql, args)
     end)
     if not ok then
         return false
     end
-    if result == nil or (type(result) == "table" and not next(result)) then
+    if rows == nil or not next(rows) then
         return nil
     end
-    return result
+    return rows
 end
 
 --- Insert a new row into the settings table.
@@ -119,13 +230,29 @@ function Handle:insert(values)
     if not self:is_open() then
         return false
     end
-    local ok, row_id = pcall(function()
-        return self.settings:insert(values)
+    local cols, args, marks = {}, {}, {}
+    local ok_cols = pcall(function()
+        local clauses
+        clauses, args = pairs_bound(values)
+        for _, c in ipairs(clauses) do
+            cols[#cols + 1] = c:sub(1, -5) -- strip " = ?"
+            marks[#marks + 1] = "?"
+        end
+    end)
+    if not ok_cols or #cols == 0 then
+        return false
+    end
+    local sql = ("INSERT INTO settings (%s) VALUES (%s)"):format(table.concat(cols, ", "), table.concat(marks, ", "))
+    local rowid
+    local ok = with_conn(self.db, function(conn)
+        exec_bound(conn, sql, args)
+        local row = query_bound(conn, "SELECT last_insert_rowid() AS id", {})[1]
+        rowid = row and tonumber(row.id) or nil
     end)
     if not ok then
         return false
     end
-    return row_id
+    return rowid or false
 end
 
 --- Update existing rows that match conditions.
@@ -136,23 +263,37 @@ function Handle:update(conditions, values)
     if not self:is_open() then
         return false
     end
-    local ok, _ = pcall(function()
-        self.settings:update({ where = conditions, set = values })
+    local sets, set_args, wheres, where_args
+    local ok_build = pcall(function()
+        sets, set_args = pairs_bound(values)
+        wheres, where_args = pairs_bound(conditions)
     end)
-    return ok
+    if not ok_build or #sets == 0 then
+        return false
+    end
+    local sql = "UPDATE settings SET " .. table.concat(sets, ", ")
+    if #wheres > 0 then
+        sql = sql .. " WHERE " .. table.concat(wheres, " AND ")
+    end
+    local args = {}
+    vim.list_extend(args, set_args)
+    vim.list_extend(args, where_args)
+    return with_conn(self.db, function(conn)
+        exec_bound(conn, sql, args)
+    end)
 end
 
--- The parameter-bound upsert statement. `name` is UNIQUE, so ON CONFLICT turns the INSERT into an
--- UPDATE — one round-trip instead of find-then-insert/update. Named params (:name/:value/:type) are
--- bound by sqlite.lua, so no manual escaping. Uses RAW `db:eval`, NOT `tbl:insert`/`tbl:update`
--- (those each wrap themselves in their own BEGIN/COMMIT and would nest-error inside a transaction).
-local UPSERT_SQL = "INSERT INTO settings (name, value, type) VALUES (:name, :value, :type) "
+-- The upsert statement. `name` is UNIQUE, so ON CONFLICT turns the INSERT into an UPDATE — one
+-- round-trip instead of find-then-insert/update. Values are bound by index (see above). Uses the
+-- raw connection, NOT `tbl:insert`/`tbl:update` (those each wrap themselves in their own
+-- BEGIN/COMMIT and would nest-error inside a transaction).
+local UPSERT_SQL = "INSERT INTO settings (name, value, type) VALUES (?, ?, ?) "
     .. "ON CONFLICT(name) DO UPDATE SET value = excluded.value, type = excluded.type"
 
 --- Insert-or-update a settings row in one statement. sqlite.lua keeps the connection CLOSED between
---- ops (each op opens it), so a standalone upsert wraps its eval in `with_open` (open→eval→close).
---- Inside `Handle:transaction` the connection is ALREADY open, so it evals directly and does NOT
---- close it — that is what lets a batch share one connection and one BEGIN/COMMIT.
+--- ops (each op opens it), so a standalone upsert opens one for the call. Inside `Handle:transaction`
+--- the connection is ALREADY open, so it runs directly and does NOT close it — that is what lets a
+--- batch share one connection and one BEGIN/COMMIT.
 ---@param name     string  Setting name (the UNIQUE key)
 ---@param value    string  Encoded text value
 ---@param type_tag string  Value type tag (int/float/bool/string/json)
@@ -161,21 +302,14 @@ function Handle:upsert(name, value, type_tag)
     if not self:is_open() then
         return false
     end
-    local params = { name = name, value = value, type = type_tag }
-    return pcall(function()
-        if self.db:isopen() then
-            self.db:eval(UPSERT_SQL, params)
-        else
-            self.db:with_open(function(conn)
-                conn:eval(UPSERT_SQL, params)
-            end)
-        end
+    return with_conn(self.db, function(conn)
+        exec_bound(conn, UPSERT_SQL, { name, value, type_tag })
     end)
 end
 
 --- Run `fn` inside a single transaction over ONE open connection (BEGIN … COMMIT), so a bulk import
---- commits ONCE instead of opening/closing + committing per row. `fn`'s writes MUST go through
---- `Handle:upsert` (which reuses the open connection), never `tbl:insert`/`tbl:update`/`tbl:remove`
+--- commits ONCE instead of opening/closing + committing per row. `fn`'s writes MUST go through the
+--- bound CRUD calls of this handle (which reuse the open connection), never sqlite.lua's `tbl:*`
 --- — those open their own nested transaction and would error. `with_open` closes the connection on
 --- the way out, which auto-rolls-back if COMMIT never ran (e.g. `fn` threw). Degrades to running
 --- `fn` unwrapped when the handle is closed.
@@ -196,16 +330,26 @@ function Handle:transaction(fn)
 end
 
 --- Remove rows that match conditions.
----@param conditions table  Column-value pairs for the WHERE clause
+---@param conditions table  Column-value pairs for the WHERE clause (all must match)
 ---@return boolean  true on success, false on error
 function Handle:remove(conditions)
     if not self:is_open() then
         return false
     end
-    local ok, _ = pcall(function()
-        self.settings:remove(conditions)
+    local clauses, args
+    local ok_build = pcall(function()
+        clauses, args = pairs_bound(conditions)
     end)
-    return ok
+    if not ok_build then
+        return false
+    end
+    local sql = "DELETE FROM settings"
+    if #clauses > 0 then
+        sql = sql .. " WHERE " .. table.concat(clauses, " AND ")
+    end
+    return with_conn(self.db, function(conn)
+        exec_bound(conn, sql, args)
+    end)
 end
 
 --- Execute a raw SQL statement. Intended for migrations / administrative tasks only.
