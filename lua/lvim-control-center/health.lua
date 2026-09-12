@@ -16,11 +16,11 @@ function M.check()
     local health = vim.health
     health.start("lvim-control-center")
 
-    -- Neovim version: vim.uv + the lvim-utils UI both need >= 0.10.
-    if vim.fn.has("nvim-0.10") == 1 then
-        health.ok("Neovim >= 0.10")
+    -- Neovim version: the lvim-tech set targets 0.12 (lvim-utils, whose UI this builds on, requires it).
+    if vim.fn.has("nvim-0.12") == 1 then
+        health.ok("Neovim >= 0.12")
     else
-        health.error("Neovim >= 0.10 is required")
+        health.error("Neovim >= 0.12 is required (the lvim-tech set targets 0.12; lvim-utils requires it)")
     end
 
     -- sqlite.lua — mandatory: the whole persistence layer is built on it.

@@ -17,13 +17,13 @@
 
 ## Requirements
 
-- Neovim >= 0.10.0
+- Neovim >= 0.12
 - [lvim-tech/lvim-utils](https://github.com/lvim-tech/lvim-utils) - The UI panel + config-merge layer.
 - [kkharji/sqlite.lua](https://github.com/kkharji/sqlite.lua) - For settings persistence.
 
 ## Installation
 
-Requires Neovim >= 0.10 and [lvim-utils](https://github.com/lvim-tech/lvim-utils) + [sqlite.lua](https://github.com/kkharji/sqlite.lua).
+Requires Neovim >= 0.12 and [lvim-utils](https://github.com/lvim-tech/lvim-utils) + [sqlite.lua](https://github.com/kkharji/sqlite.lua).
 
 ### lvim-installer (recommended)
 
