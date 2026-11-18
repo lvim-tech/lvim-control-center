@@ -490,8 +490,8 @@ function Instance:search()
                 items[#items + 1] = {
                     group = group.name,
                     name = setting.name,
-                    -- "Group ➤ Setting" — ➤ (U+27A4) is the canonical lvim-tech sequence separator.
-                    label = (group.label or group.name) .. " ➤ " .. (label or setting.desc or setting.name),
+                    -- "Group 󰅂 Setting" — 󰅂 (U+F0142 nf-md-chevron_right) is the canonical lvim-tech sequence separator.
+                    label = (group.label or group.name) .. " 󰅂 " .. (label or setting.desc or setting.name),
                 }
             end
         end
